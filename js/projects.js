@@ -25,16 +25,19 @@ window.SITE = {
   name: "William Schell",
   aboutTitle: "About Me",
   about:
-    "Hi there! I'm William. Write a couple of sentences here about who you are, " +
-    "what kinds of games you make, and what you're working on right now.",
-  email: "wschell1015@vt.edu",
+    "Hello! My name is William Schell. I have been coding and making video games " +
+    "since I was just 12 years old! Ten years later, and I am much more vetted " +
+    "and professional now. I am slated to graduate from Virginia Tech in May of " +
+     "2026 with a Bachelors in Computer Science. Below are some of the projects " +
+     "I have worked on during my time here!",
+  email: "williamschelldev@gmail.com",
   cv: "",            // link to your CV / resume (Google Drive, PDF in /images, etc.) — leave "" to hide
   socials: [
     // types with icons: linkedin, youtube, github, itch, email. Anything else shows a generic link icon.
-    { type: "linkedin", url: "https://www.linkedin.com/in/your-handle/" },
-    { type: "itch",     url: "https://your-handle.itch.io/" },
+    { type: "linkedin", url: "https://www.linkedin.com/in/william-schell/" },
+    { type: "itch",     url: "https://duckzi8.itch.io/" },
     { type: "youtube",  url: "https://www.youtube.com/@your-handle" },
-    { type: "email",    url: "mailto:wschell1015@vt.edu" }
+    { type: "email",    url: "mailto:williamschelldev@gmail.com" }
   ]
 };
 
