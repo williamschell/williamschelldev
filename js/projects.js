@@ -27,7 +27,7 @@ window.SITE = {
   about:
     "Hello! My name is William Schell. I have been coding and making video games " +
     "since I was just 12 years old! Ten years later, and I am much more vetted " +
-    "and professional now. I am slated to graduate from Virginia Tech in May of " +
+    "in the profession now. I am slated to graduate from Virginia Tech in May of " +
      "2026 with a Bachelors in Computer Science. Below are some of the projects " +
      "I have worked on during my time here!",
   email: "williamschelldev@gmail.com",
@@ -43,7 +43,7 @@ window.SITE = {
 
 window.PROJECTS = [
   {
-    slug: "example-game-one",          // used in the URL: williamschell.dev/#example-game-one
+    slug: "Bullet Ant",          // used in the URL: williamschell.dev/#example-game-one
     title: "Example Game One",
     teamSize: "Solo",
     roles: "Game Design, Programming, 2D Art",
@@ -61,7 +61,7 @@ window.PROJECTS = [
     ]
   },
   {
-    slug: "example-game-two",
+    slug: "Cavity",
     title: "Example Game Two",
     teamSize: "Team of 4",
     roles: "Lead Design, Systems Programming",
@@ -74,7 +74,7 @@ window.PROJECTS = [
     ]
   },
   {
-    slug: "example-game-three",
+    slug: "In Sheeps Clothing",
     title: "Example Game Three",
     teamSize: "Solo",
     roles: "Game Design, Writing",
@@ -87,7 +87,7 @@ window.PROJECTS = [
     ]
   },
   {
-    slug: "example-game-four",
+    slug: "Mira",
     title: "Example Game Four",
     teamSize: "Game Jam Team of 3",
     roles: "Programming, Level Design",
