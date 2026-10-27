@@ -44,15 +44,15 @@ window.SITE = {
 window.PROJECTS = [
   {
     slug: "Bullet Ant",          // used in the URL: williamschell.dev/#example-game-one
-    title: "Example Game One",
+    title: "Bullet Ant",
     teamSize: "Solo",
-    roles: "Game Design, Programming, 2D Art",
-    dates: "February 2025 - Present",
+    roles: "Game Design, Programming, 2D Art, Sound, Music",
+    dates: "5 Day Game Jam, July, 2026",
     cover: "",                          // e.g. "images/example-game-one/cover.png"
     hoverCover: "",                     // image shown when hovering the cover (optional)
-    engine: "Unity",                    // optional
+    engine: "Godot",                    // optional
     links: [
-      { label: "Play on itch.io", url: "https://itch.io/" }
+      { label: "Play on itch.io", url: "https://duckzi8.itch.io/bullet-ant" }
     ],
     blocks: [
       { type: "text", text: "A short pitch for the game: what it is, what the player does, and what makes it interesting.\n\nWhat you personally built, the hardest design problem you solved, and what you learned." },
