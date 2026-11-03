@@ -48,7 +48,7 @@ window.PROJECTS = [
     teamSize: "Solo",
     roles: "Game Design, Programming, 2D Art, Sound, Music",
     dates: "5 Day Game Jam, July 2026",
-    cover: "",                          // e.g. "images/example-game-one/cover.png"
+    cover: "images/bulletantcover.png",                          // e.g. "images/example-game-one/cover.png"
     hoverCover: "",                     // image shown when hovering the cover (optional)
     engine: "Godot",                    // optional
     links: [
@@ -79,7 +79,7 @@ window.PROJECTS = [
     teamSize: "Team of 2",
     roles: "Game Design, Writing/Dialogue, Programming, 3D Map Art",
     dates: "August 2026",
-    cover: "",
+    cover: "images/insheepsclothingcover.png",
     hoverCover: "",
     links: [{ label: "Play on itch.io", url: "https://duckzi8.itch.io/in-sheeps-clothing" }],
     blocks: [
@@ -92,7 +92,7 @@ window.PROJECTS = [
     teamSize: "Team of 2",
     roles: "Team lead, Programming, Map Design, Game Design",
     dates: "48-hour Game Jam, 2026",
-    cover: "",
+    cover: "images/autumnpaintingcover.png",
     hoverCover: "",
     links: [{ label: "Play on itch.io", url: "https://duckzi8.itch.io/autumn-painting" }],
     blocks: [
