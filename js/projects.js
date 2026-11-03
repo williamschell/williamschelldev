@@ -66,7 +66,7 @@ window.PROJECTS = [
     teamSize: "Team of 2",
     roles: "Game Design, Programming, Pixel Art, Sound, Music, Writing/Dialogue",
     dates: "14 Day Game Jam, July 2026",
-    cover: "",
+    cover: "images/caivtycover.png",
     hoverCover: "",
     links: [{ label: "Play on itch.io", url: "https://duckzi8.itch.io/cavity" }],
     blocks: [
