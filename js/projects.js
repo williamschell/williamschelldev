@@ -47,7 +47,7 @@ window.PROJECTS = [
     title: "Bullet Ant",
     teamSize: "Solo",
     roles: "Game Design, Programming, 2D Art, Sound, Music",
-    dates: "5 Day Game Jam, July, 2026",
+    dates: "5 Day Game Jam, July 2026",
     cover: "",                          // e.g. "images/example-game-one/cover.png"
     hoverCover: "",                     // image shown when hovering the cover (optional)
     engine: "Godot",                    // optional
@@ -62,13 +62,13 @@ window.PROJECTS = [
   },
   {
     slug: "Cavity",
-    title: "Example Game Two",
-    teamSize: "Team of 4",
-    roles: "Lead Design, Systems Programming",
-    dates: "January 2024 - May 2024",
+    title: "Cavity",
+    teamSize: "Team of 2",
+    roles: "Game Design, Programming, Pixel Art, Sound, Music, Writing/Dialogue",
+    dates: "14 Day Game Jam, July 2026",
     cover: "",
     hoverCover: "",
-    links: [],
+    links: [{ label: "Play on itch.io", url: "https://duckzi8.itch.io/cavity" }],
     blocks: [
       { type: "text", text: "Project description goes here." }
     ]
