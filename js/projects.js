@@ -75,26 +75,26 @@ window.PROJECTS = [
   },
   {
     slug: "In Sheeps Clothing",
-    title: "Example Game Three",
-    teamSize: "Solo",
-    roles: "Game Design, Writing",
-    dates: "September 2023",
+    title: "In Sheeps Clothing",
+    teamSize: "Team of 2",
+    roles: "Game Design, Writing/Dialogue, Programming, 3D Map Art",
+    dates: "August 2026",
     cover: "",
     hoverCover: "",
-    links: [],
+    links: [{ label: "Play on itch.io", url: "https://duckzi8.itch.io/in-sheeps-clothing" }],
     blocks: [
       { type: "text", text: "Project description goes here." }
     ]
   },
   {
-    slug: "Mira",
+    slug: "Autumn Painting",
     title: "Example Game Four",
-    teamSize: "Game Jam Team of 3",
-    roles: "Programming, Level Design",
-    dates: "48-hour Game Jam, 2023",
+    teamSize: "Team of 2",
+    roles: "Team lead, Programming, Map Design, Game Design",
+    dates: "48-hour Game Jam, 2026",
     cover: "",
     hoverCover: "",
-    links: [],
+    links: [{ label: "Play on itch.io", url: "https://duckzi8.itch.io/autumn-painting" }],
     blocks: [
       { type: "text", text: "Project description goes here." }
     ]
