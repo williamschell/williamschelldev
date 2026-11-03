@@ -88,7 +88,7 @@ window.PROJECTS = [
   },
   {
     slug: "Autumn Painting",
-    title: "Example Game Four",
+    title: "Autumn Painting",
     teamSize: "Team of 2",
     roles: "Team lead, Programming, Map Design, Game Design",
     dates: "48-hour Game Jam, 2026",
