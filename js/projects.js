@@ -28,7 +28,7 @@ window.SITE = {
     "Hello! My name is William Schell. I have been coding and making video games " +
     "since I was just 12 years old! Ten years later, and I am much more vetted " +
     "in the profession now. I am slated to graduate from Virginia Tech in May of " +
-     "2026 with a Bachelors in Computer Science. Below are some of the projects " +
+     "2027 with a Bachelors in Computer Science. Below are some of the projects " +
      "I have worked on during my time here!",
   email: "williamschelldev@gmail.com",
   cv: "",            // link to your CV / resume (Google Drive, PDF in /images, etc.) — leave "" to hide
