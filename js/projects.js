@@ -64,7 +64,7 @@ window.PROJECTS = [
     slug: "Cavity",
     title: "Cavity",
     teamSize: "Team of 2",
-    roles: "Game Design, Programming, Pixel Art, Sound, Music, Writing",
+    roles: "Game Design, Programming, 2D Art, 3D Art, Sound, Music, Writing",
     dates: "14 Day Game Jam, July 2026",
     cover: "images/caivtycover.png",
     hoverCover: "",
