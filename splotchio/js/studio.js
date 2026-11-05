@@ -133,12 +133,10 @@ export function createStudio({ onPost }) {
     ));
     $('preset').value = presetName ?? '';
 
-    for (const key of ['rotate', 'scale', 'scaleX', 'scaleY']) {
+    for (const key of ['rotate', 'scale']) {
       $(`t-${key}`).value = state.transform[key];
       sliderOutput(key, state.transform[key]);
     }
-    $('t-flipX').setAttribute('aria-pressed', String(state.transform.flipX));
-    $('t-flipY').setAttribute('aria-pressed', String(state.transform.flipY));
 
     for (const radio of document.querySelectorAll('input[name="blob-mode"]')) {
       radio.checked = radio.value === state.blobStyle.mode;
@@ -285,6 +283,11 @@ export function createStudio({ onPost }) {
       unlocked: draft.unlocked,
     });
     await layer.load({ strokes: draft.strokes ?? [], baseBlob: draft.baseBlob ?? null });
+    // A blank draft from before flips and stretches were removed has no art to line up with.
+    if (!layer.hasArt) {
+      const { rotate, scale } = state.transform;
+      state.transform = { rotate, scale };
+    }
   }
 
   function show() {
@@ -675,14 +678,6 @@ export function createStudio({ onPost }) {
         changed();
       });
     }
-    $('t-flipX').addEventListener('click', () => {
-      state.transform = { ...state.transform, flipX: !state.transform.flipX };
-      changed();
-    });
-    $('t-flipY').addEventListener('click', () => {
-      state.transform = { ...state.transform, flipY: !state.transform.flipY };
-      changed();
-    });
     $('t-reset').addEventListener('click', () => {
       state.transform = defaultTransform();
       changed();

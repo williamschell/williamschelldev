@@ -5,16 +5,16 @@
 /**
  * @typedef {object} BlobTransform
  * @property {number} rotate degrees
- * @property {boolean} flipX
- * @property {boolean} flipY
- * @property {number} scaleX stretch
- * @property {number} scaleY stretch
  * @property {number} scale uniform scale
+ * @property {boolean} [flipX] legacy: artists can't set this, but older art may have it
+ * @property {boolean} [flipY] legacy, same as flipX
+ * @property {number} [scaleX] legacy stretch, same as flipX
+ * @property {number} [scaleY] legacy stretch, same as flipX
  */
 
 /** @returns {BlobTransform} */
 export function defaultTransform() {
-  return { rotate: 0, flipX: false, flipY: false, scaleX: 1, scaleY: 1, scale: 1 };
+  return { rotate: 0, scale: 1 };
 }
 
 /**
@@ -37,8 +37,9 @@ export function multiply(m1, m2) {
 }
 
 /**
- * Composes the transform around the artboard center: stretch and flip first, then
- * rotate, then move back into place.
+ * Composes the transform around the artboard center: scale first, then rotate, then
+ * move back into place. Legacy flips and stretches still apply, so art saved or posted
+ * with them keeps lining up with its blob.
  * @param {BlobTransform} t
  * @param {number} size artboard size
  * @returns {number[]}
@@ -48,8 +49,8 @@ export function composeMatrix(t, size) {
   const rad = (t.rotate * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
-  const sx = t.scale * t.scaleX * (t.flipX ? -1 : 1);
-  const sy = t.scale * t.scaleY * (t.flipY ? -1 : 1);
+  const sx = t.scale * (t.scaleX ?? 1) * (t.flipX ? -1 : 1);
+  const sy = t.scale * (t.scaleY ?? 1) * (t.flipY ? -1 : 1);
   let m = [1, 0, 0, 1, c, c];
   m = multiply(m, [cos, sin, -sin, cos, 0, 0]);
   m = multiply(m, [sx, 0, 0, sy, 0, 0]);

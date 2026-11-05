@@ -33,7 +33,7 @@ splotchio/
 │   ├── contour.js      # Marching squares → closed polylines → smoothing
 │   ├── path.js         # Polylines → SVG path data / Path2D (cubic Béziers)
 │   ├── blob.js         # generateBlob(params) → { contours, bounds, meta }
-│   ├── transform.js    # Rotate / flip / stretch / scale as a 2D matrix
+│   ├── transform.js    # Rotate / scale as a 2D matrix
 │   ├── daily.js        # Date → seed, daily challenge logic, streaks
 │   ├── draw.js         # Canvas drawing layer: brushes, eraser, undo/redo
 │   ├── studio.js       # The Draw view: current blob, autosave, all its controls
@@ -69,7 +69,7 @@ Keep modules small and single-purpose. Generation code (`rng`, `noise`, `field`,
 ### MVP (build in this order)
 1. **Blob generation.** Pick a seed and parameters, get an SVG blob on screen.
 2. **Controls.** Complexity, proportions, number of lobes, holes and protrusions, plus a "New blob" button.
-3. **Transforms.** Rotate, flip H/V, stretch X/Y and scale, all non-destructive.
+3. **Transforms.** Rotate and scale only, both non-destructive. No flipping or stretching.
 4. **Draw over the blob.** A canvas layer with a brush, an eraser, color, size and undo/redo.
 5. **Save** the artwork together with the original blob, plus a local gallery to browse saved pieces.
 6. **Export** a PNG of the artwork, a side-by-side PNG (blob | artwork) and an SVG of the blob alone.
@@ -137,7 +137,7 @@ The stage is a fixed-aspect artboard (default 1024×1024 logical units, scaled t
 4. **Drawing layer**: `<canvas>` sized to the artboard × `devicePixelRatio`
 5. UI overlays (cursor preview, selection handles)
 
-- Transforms (`transform.js`) are stored as `{ rotate, flipX, flipY, scaleX, scaleY, scale }` and composed into one matrix. They are never baked into `contours`. Export applies the matrix.
+- Transforms (`transform.js`) are stored as `{ rotate, scale }` and composed into one matrix. Art made before flips and stretches were removed may also carry `flipX`, `flipY`, `scaleX` and `scaleY`, which `composeMatrix` still honors so it keeps lining up. They are never baked into `contours`. Export applies the matrix.
 - Once someone starts drawing, changing the blob's transform should ask for confirmation, or be locked, since the art would no longer line up.
 - The blob style can be filled, outline or ghost (low opacity), with a color picker. Fill color is saved with the artwork.
 
