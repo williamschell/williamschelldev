@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Novle: a new short story prompt every day</title>
+<meta name="description" content="Everyone gets the same prompt, genre and word limit each day. Write a short story, post it, and see where everyone else took it.">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#b5ecc4">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#35176a">
+<meta property="og:title" content="Novle">
+<meta property="og:description" content="Everyone gets the same story prompt each day. Where will you take it?">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://williamschell.dev/novle/">
+<meta property="og:image" content="https://williamschell.dev/novle/assets/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./css/styles.css">
+<script>
+  // Set the theme before first paint so a saved choice doesn't flash the wrong colors.
+  try {
+    const theme = JSON.parse(localStorage.getItem('novle:theme'));
+    if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+  } catch { /* no saved theme */ }
+</script>
+<script type="module" src="./index.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#/write" aria-label="Novle, go to the writing view">
+    <svg class="icon logo" aria-hidden="true"><use href="./assets/icons/sprite.svg#book"/></svg>
+    <span class="brand-name">Novle</span>
+  </a>
+  <nav class="tabs" aria-label="Main">
+    <a class="tab" data-route="write" href="#/write">Write</a>
+    <a class="tab" data-route="today" href="#/today">Today</a>
+    <a class="tab" data-route="all-time" href="#/all-time">All-Time</a>
+    <a class="tab tab-small" data-route="mine" href="#/mine">Mine</a>
+  </nav>
+  <div class="topbar-end">
+    <button id="theme-toggle" class="icon-button" type="button" aria-label="Switch color theme"></button>
+    <a class="back-link" href="../">williamschell.dev</a>
+  </div>
+</header>
+
+<main>
+  <section id="view-write" class="view writer" aria-label="Write">
+    <div class="writer-main">
+      <div class="challenge">
+        <div>
+          <h1 id="challenge-title">Novle</h1>
+          <p id="challenge-sub"></p>
+        </div>
+        <p id="streak" class="streak" hidden></p>
+      </div>
+
+      <section class="prompt-card" aria-label="Prompt">
+        <div class="row">
+          <span id="prompt-genre" class="tag"></span>
+          <span id="prompt-limit" class="tag"></span>
+        </div>
+        <p id="prompt-text" class="prompt-text"></p>
+        <p id="prompt-wrinkle" class="prompt-wrinkle" hidden><strong>Wrinkle:</strong> <span id="prompt-wrinkle-text"></span></p>
+      </section>
+
+      <div class="page">
+        <input id="story-title" class="story-title" type="text" maxlength="80" placeholder="Title" aria-label="Story title" autocomplete="off">
+        <textarea id="story-body" class="story-body" placeholder="Once upon a time..." aria-label="Your story" spellcheck="true"></textarea>
+        <div id="word-meter" class="word-meter" aria-hidden="true"><div id="word-meter-fill"></div></div>
+      </div>
+
+      <div class="word-status">
+        <span id="word-count" class="word-count"></span>
+        <span id="save-state" class="save-state"></span>
+      </div>
+      <p id="word-note" class="word-note" role="status"></p>
+
+      <div class="actions">
+        <button id="save" class="button primary" type="button" title="Save (Ctrl+S)">Save</button>
+        <button id="post" class="button accent" type="button">Post to today's gallery</button>
+        <button id="download" class="button" type="button">Download</button>
+        <button id="panel-toggle" class="button panel-toggle" type="button" aria-expanded="false" aria-controls="panel">Prompts</button>
+      </div>
+    </div>
+
+    <aside id="panel" class="panel" aria-label="Prompt options">
+      <button id="panel-close" class="button panel-close" type="button">Done</button>
+
+      <section class="panel-section" id="daily-section">
+        <h2>Today's prompt</h2>
+        <p>Everyone in the world gets this same prompt today. A new one arrives at midnight, your time.</p>
+        <div class="row">
+          <button id="go-free" class="button" type="button">Practice</button>
+        </div>
+      </section>
+
+      <section class="panel-section" id="free-section" hidden>
+        <h2>Practice</h2>
+        <p>Try a random prompt. Practice stories stay in Mine and can't be posted.</p>
+        <div class="row">
+          <button id="new-prompt" class="button primary" type="button">New prompt</button>
+          <button id="go-daily" class="button" type="button">Today's prompt</button>
+        </div>
+      </section>
+
+      <section class="panel-section">
+        <h2>How it works</h2>
+        <p>Stay within the word limit to post. You can go over while you write, and nothing gets cut off. Save whenever you like, and you can post once a day.</p>
+      </section>
+
+      <section class="panel-section" id="past-section">
+        <h2>Past prompts</h2>
+        <label class="field">Open an earlier day (doesn't count toward your streak)
+          <input id="past-date" type="date">
+        </label>
+      </section>
+    </aside>
+  </section>
+
+  <section id="view-gallery" class="view gallery-view" hidden></section>
+  <section id="view-mine" class="view mine-view" hidden></section>
+
+  <section id="view-rules" class="view prose" hidden>
+    <h1>Community rules</h1>
+    <p>The gallery is public, and anyone of any age might be reading it. Fiction can go to dark places, but keep it readable for everyone.</p>
+    <ul>
+      <li><strong>Post your own writing.</strong> Don't copy other people's work.</li>
+      <li><strong>Be kind.</strong> No harassment, and don't write to mock real people.</li>
+      <li><strong>Keep it safe for work.</strong> No sexual content or graphic gore.</li>
+      <li><strong>Nothing hateful.</strong> No slurs or hate speech.</li>
+      <li><strong>No personal info.</strong> Don't post anyone's address, phone number or other private details, including your own.</li>
+    </ul>
+    <p>Three reports hide a story until it has been reviewed. Only you can still see your own hidden story, with a "Hidden pending review" label.</p>
+    <p><a class="button" href="#/today">Back to the gallery</a></p>
+  </section>
+</main>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

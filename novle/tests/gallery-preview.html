@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Novle gallery preview</title>
+<link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+<!-- The real gallery code on fake data, for design review with no backend. Nothing here is saved.
+     Add ?view=all-time or ?view=post to see the other views. -->
+<header class="topbar">
+  <span class="brand"><span class="brand-name">Novle preview</span></span>
+  <nav class="tabs">
+    <a class="tab" href="?view=today">Today</a>
+    <a class="tab" href="?view=all-time">All-Time</a>
+    <a class="tab" href="?view=post">Story</a>
+    <a class="tab" href="?view=post-dialog">Post</a>
+  </nav>
+  <button id="flip" class="icon-button" type="button" aria-label="Switch theme">◐</button>
+</header>
+<main><section id="root" class="gallery-view"></section></main>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script type="module">
+  import { createGallery } from '../js/gallery.js';
+  import { dailyChallenge } from '../js/prompts.js';
+  import { localDateString } from '../js/daily.js';
+
+  const today = localDateString();
+  const challenge = dailyChallenge(today);
+
+  const paragraphs = [
+    'The bells stopped at nine, and by ten the whole street had decided it had heard nothing at all. Mrs. Adeyemi kept sweeping. The Hollis boys kept kicking their ball against the wall of the bakery, which had been shut for a month.',
+    'I found the letter under the third stair, where the carpet never quite met the wood. It had my name on it, and tomorrow\'s date, in handwriting I knew better than my own.',
+    'Nobody tells you how quiet a ferry gets after the last car is gone. You can hear the rope think.',
+  ];
+
+  const posts = Array.from({ length: 9 }, (_, i) => {
+    const body = Array.from({ length: 3 + (i % 3) }, (_, n) => paragraphs[(i + n) % 3]).join('\n\n');
+    return {
+      id: `post-${i}`,
+      user_id: i === 1 ? 'me' : `user-${i}`,
+      daily_date: today,
+      genre: i % 2 ? 'Mystery' : challenge.genre,
+      word_limit: challenge.wordLimit,
+      prompt: challenge.prompt,
+      title: ['The Third Stair', 'What the River Gave Back', 'Eleven Chairs', 'Last Ferry to Nowhere in Particular', 'A Tuesday, Stolen', 'Map Ends Here', 'The Dog Knew', 'Nine Years Late', '<b>Not bold, just a title</b>'][i],
+      body,
+      excerpt: body.slice(0, 600),
+      word_count: body.split(/\s+/).length,
+      like_count: 48 - i * 5,
+      hidden: i === 4,
+      created_at: new Date(Date.now() - i * 3600000).toISOString(),
+      profiles: { display_name: ['Inky Heron 482', 'Quiet Moth 113', 'Dusty Owl 907', 'Tiny Fox 250', 'Rambling Toad 671'][i % 5] },
+    };
+  });
+
+  const api = {
+    isConfigured: true,
+    currentUserId: async () => 'me',
+    getMyLikes: async () => new Set(['post-0']),
+    getLikeCounts: async () => new Map(),
+    listPosts: async ({ cursor }) => ({ posts: cursor ? [] : posts, hasMore: false }),
+    getPost: async (id) => posts.find((p) => p.id === id) ?? null,
+    setLike: async () => {},
+    reportPost: async () => {},
+    deletePost: async () => {},
+    getMyName: async () => null,
+    saveMyName: async () => {},
+    createPost: async () => 'new',
+    randomDisplayName: () => 'Inky Heron 482',
+    displayNameError: () => null,
+  };
+
+  document.getElementById('flip').addEventListener('click', () => {
+    const root = document.documentElement;
+    const dark = root.dataset.theme
+      ? root.dataset.theme === 'dark'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme = dark ? 'light' : 'dark';
+  });
+
+  const gallery = createGallery({ api, root: document.getElementById('root') });
+  const view = new URLSearchParams(window.location.search).get('view') ?? 'today';
+  if (view === 'all-time') gallery.showAllTime();
+  else if (view === 'post') gallery.showPost('post-0');
+  else if (view === 'post-dialog') {
+    gallery.showToday();
+    gallery.openPostDialog({ dailyDate: today, challenge, title: posts[0].title, body: posts[0].body });
+  } else gallery.showToday();
+</script>
+</body>
+</html>
