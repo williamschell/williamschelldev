@@ -100,6 +100,9 @@ export function createWriter({ onPost }) {
       : "Practice stories stay in Mine, and don't count toward your streak.";
     $('prompt-genre').textContent = challenge.genre;
     $('prompt-limit').textContent = `${challenge.wordLimit.toLocaleString()} words`;
+    // Stories saved before prompts had names don't have a title.
+    $('prompt-title').hidden = !challenge.title;
+    $('prompt-title').textContent = challenge.title ?? '';
     $('prompt-text').textContent = challenge.prompt;
     $('prompt-wrinkle').hidden = !challenge.wrinkle;
     $('prompt-wrinkle-text').textContent = challenge.wrinkle ?? '';

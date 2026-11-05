@@ -61,8 +61,9 @@ function revealPrompt() {
       el('span', { class: 'tag' }, challenge.genre),
       el('span', { class: 'tag' }, `${challenge.wordLimit.toLocaleString()} words`),
     ),
+    challenge.title ? el('h3', { class: 'prompt-title' }, challenge.title) : null,
     el('p', { class: 'prompt-text' }, challenge.prompt),
-    challenge.wrinkle ? el('p', { class: 'prompt-wrinkle' }, el('strong', {}, 'Wrinkle: '), challenge.wrinkle) : null,
+    challenge.wrinkle ? el('p', { class: 'prompt-wrinkle' }, el('strong', {}, 'Optional twist: '), challenge.wrinkle) : null,
     el('p', { class: 'notice' }, 'Take it anywhere you like. There are no wrong answers.'),
     el(
       'div',

@@ -29,6 +29,7 @@ function readChallenge(raw) {
   return {
     genre: raw.genre,
     wordLimit: raw.wordLimit,
+    title: typeof raw.title === 'string' ? raw.title : null,
     prompt: raw.prompt,
     wrinkle: typeof raw.wrinkle === 'string' ? raw.wrinkle : null,
   };

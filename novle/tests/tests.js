@@ -10,6 +10,10 @@ import {
 import {
   GENRES, dailyChallenge, fullPrompt, practiceChallenge,
 } from '../js/prompts.js';
+import {
+  CLOSING_LINES, GATHERINGS, GENRE_KITS, OBJECTS, OPENING_LINES, POINTS_OF_VIEW, SPOKEN_LINES,
+  STORY_FORMS, TWISTS, WORD_BANK,
+} from '../js/prompt-bank.js';
 import { parseHash } from '../js/router.js';
 
 const results = document.getElementById('results');
@@ -162,30 +166,111 @@ test('prompts: Sundays are the long day, and other days are shorter', () => {
   }
 });
 
-test('prompts: no prompt repeats within 45 days', () => {
-  const list = dates(365).map((date) => dailyChallenge(date).prompt);
-  for (let i = 0; i + 45 <= list.length; i++) {
-    const window = list.slice(i, i + 45);
-    equal(new Set(window).size, 45, `window starting at day ${i}`);
+test('prompts: no prompt repeats within 150 days', () => {
+  const list = dates(730).map((date) => dailyChallenge(date).prompt);
+  for (let i = 0; i + 150 <= list.length; i++) {
+    equal(new Set(list.slice(i, i + 150)).size, 150, `window starting at day ${i}`);
   }
 });
 
-test('prompts: a premise never repeats for two years', () => {
-  const premises = dates(730).map((date) => dailyChallenge(date).prompt).filter((p) => !p.startsWith('Begin your story'));
-  equal(new Set(premises).size, premises.length);
+test('prompts: the bank is complete', () => {
+  equal(Object.keys(GENRE_KITS).length, 14);
+  for (const [genre, kit] of Object.entries(GENRE_KITS)) {
+    ok(kit.scenarios.length >= 8, `${genre} scenarios`);
+    ok(kit.banned.length >= 3, `${genre} banned words`);
+    ok(/^(a|an) /.test(kit.story), `${genre} reads as a noun: ${kit.story}`);
+    for (const [title, prompt] of kit.scenarios) {
+      ok(title.length > 0 && title.length <= 40, `${genre} title: ${title}`);
+      ok(/[.?!]$/.test(prompt), `${genre} punctuation: ${prompt}`);
+    }
+  }
+  const titles = Object.values(GENRE_KITS).flatMap((kit) => kit.scenarios.map(([title]) => title));
+  equal(new Set(titles).size, titles.length, 'scenario names are unique');
+  equal(new Set(WORD_BANK).size, WORD_BANK.length, 'word bank has no repeats');
 });
 
-test('prompts: every fifth day is a first line, and about half have a wrinkle', () => {
+test('prompts: hand-written scenarios belong to the day\'s genre', () => {
+  for (const date of dates(365)) {
+    const { genre, prompt, title } = dailyChallenge(date);
+    const names = Object.values(GENRE_KITS).flatMap((kit) => kit.scenarios.map(([name]) => name));
+    if (names.includes(title)) {
+      ok(GENRE_KITS[genre].scenarios.some(([name, text]) => name === title && text === prompt), `${date}: ${title}`);
+    } else {
+      ok(prompt.includes(GENRE_KITS[genre].story), `${date} names its genre: ${prompt}`);
+    }
+  }
+});
+
+test('prompts: every day has a name, and the shapes vary', () => {
   const list = dates(365).map((date) => dailyChallenge(date));
-  list.forEach((c, i) => equal(c.prompt.startsWith('Begin your story'), i % 5 === 0, `day ${i}`));
-  const wrinkles = list.filter((c) => c.wrinkle).length;
-  ok(wrinkles > 120 && wrinkles < 240, `wrinkles: ${wrinkles}`);
+  for (const c of list) ok(c.title && c.prompt && !c.prompt.includes('undefined'), c.prompt);
+  const generic = ['Start Here', 'The Last Word', 'Somebody Has to Say It', 'Whose Story Is It?', 'Odd Format', 'Something Goes Wrong', 'The Object', 'Four Words'];
+  for (const name of generic) ok(list.some((c) => c.title === name), `shape never used: ${name}`);
+  for (let i = 1; i < list.length; i++) {
+    ok(!(generic.includes(list[i].title) && list[i].title === list[i - 1].title), `same shape twice at day ${i}`);
+  }
 });
 
-test('prompts: fullPrompt only mentions a wrinkle when there is one', () => {
-  const base = { genre: 'Noir', wordLimit: 1000, prompt: 'A premise.' };
-  equal(fullPrompt({ ...base, wrinkle: null }), 'A premise.');
-  equal(fullPrompt({ ...base, wrinkle: 'End on a question.' }), 'A premise. Wrinkle: End on a question.');
+test('prompts: every scenario and list item gets used', () => {
+  const list = dates(1500).map((date) => dailyChallenge(date).prompt);
+  const text = list.join('\n');
+  const pools = [OPENING_LINES, CLOSING_LINES, SPOKEN_LINES, POINTS_OF_VIEW, STORY_FORMS, GATHERINGS, OBJECTS, WORD_BANK];
+  for (const pool of pools) for (const item of pool) ok(text.includes(item), `never used: ${item}`);
+  const scenarios = Object.values(GENRE_KITS).flatMap((kit) => kit.scenarios);
+  const unused = scenarios.filter(([, prompt]) => !text.includes(prompt));
+  ok(unused.length === 0, `never used: ${unused.map(([title]) => title).join(', ')}`);
+});
+
+test('prompts: a genre uses all its scenarios before repeating one', () => {
+  for (const [genre, kit] of Object.entries(GENRE_KITS)) {
+    const titles = kit.scenarios.map(([title]) => title);
+    const seen = dates(1500).map((date) => dailyChallenge(date))
+      .filter((c) => c.genre === genre && titles.includes(c.title))
+      .map((c) => c.title);
+    for (let i = 0; i + titles.length <= seen.length; i += titles.length) {
+      equal(new Set(seen.slice(i, i + titles.length)).size, titles.length, `${genre} round ${i}`);
+    }
+  }
+});
+
+test('prompts: a word bank never repeats a word', () => {
+  for (const date of dates(365)) {
+    const { prompt } = dailyChallenge(date);
+    if (prompt.includes('all four of these words')) {
+      const words = prompt.split(': ')[1].replace('.', '').split(', ');
+      equal(new Set(words).size, 4, prompt);
+    }
+  }
+});
+
+test('prompts: twists only join shapes they can\'t clash with', () => {
+  const list = dates(730).map((date) => dailyChallenge(date));
+  const strict = ['Start Here', 'The Last Word', 'Whose Story Is It?', 'Odd Format', 'Four Words'];
+  for (const c of list) ok(!(c.wrinkle && strict.includes(c.title)), `${c.title}: ${c.wrinkle}`);
+  const twists = list.filter((c) => c.wrinkle);
+  ok(twists.length > 60 && twists.length < 240, `twists: ${twists.length}`);
+  ok(twists.some((c) => c.wrinkle.startsWith("Don't use")), 'banned words appear');
+  ok(twists.some((c) => TWISTS.includes(c.wrinkle)), 'general twists appear');
+});
+
+test('prompts: a twist never bans a word the prompt uses', () => {
+  const check = (c) => {
+    if (!c.wrinkle?.startsWith("Don't use")) return;
+    for (const [word] of c.wrinkle.matchAll(/"[^"]+"/g)) {
+      const bare = word.slice(1, -1);
+      ok(!new RegExp(`\\b${bare}`, 'i').test(c.prompt), `${bare}: ${c.prompt}`);
+    }
+  };
+  dates(1500).forEach((date) => check(dailyChallenge(date)));
+  for (let i = 0; i < 1000; i++) check(practiceChallenge(`t${i}`));
+});
+
+test('prompts: fullPrompt reads well, with or without a name and twist', () => {
+  const base = { genre: 'Noir', wordLimit: 1000, prompt: 'A premise.', wrinkle: null };
+  equal(fullPrompt(base), 'A premise.');
+  equal(fullPrompt({ ...base, title: 'The Name' }), 'The Name. A premise.');
+  equal(fullPrompt({ ...base, title: 'Who Is It?' }), 'Who Is It? A premise.');
+  equal(fullPrompt({ ...base, wrinkle: 'Make it short.' }), 'A premise. Optional twist: Make it short.');
 });
 
 test('prompts: practice prompts follow their seed', () => {

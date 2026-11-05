@@ -1,105 +1,58 @@
-// DRAFT prompt generator: date -> genre, word limit and prompt. Everyone with the same date
-// gets the same result, with no server involved. See CLAUDE.md §4 for the plan.
+// The prompt generator: date -> genre, word limit and prompt. Everyone with the same date gets
+// the same result, with no server involved. The content lives in prompt-bank.js. See CLAUDE.md §4.
 //
-// The lists below are placeholders to be workshopped. Changing a list reshuffles every day,
-// including today, for anyone who loads the new code. Posts and saved stories keep a snapshot
-// of what they answered, so old stories still show the right prompt.
+// Each day has a genre and a shape. A shape is one kind of hook: a hand-written scenario for that
+// genre, a first line to start from, a form to tell it in, and so on. Most shapes name the genre
+// in the sentence, so the genre always matters to the prompt.
+//
+// Changing a list reshuffles the days that use it, including today, for anyone who loads the new
+// code. Posts and saved stories keep a snapshot of what they answered, so old stories still show
+// the right prompt.
 
 import { createRng } from './rng.js';
 import { daysBetween, isSunday, LAUNCH_DATE } from './daily.js';
+import {
+  CLOSING_LINES, GATHERINGS, GENRE_KITS, OBJECTS, OPENING_LINES, POINTS_OF_VIEW, SPOKEN_LINES,
+  STORY_FORMS, TWISTS, WORD_BANK,
+} from './prompt-bank.js';
 
 /**
  * @typedef {object} Challenge
  * @property {string} genre
  * @property {number} wordLimit
+ * @property {string|null} title a short name for the prompt. Older saved stories don't have one
  * @property {string} prompt
  * @property {string|null} wrinkle an optional extra twist
  */
 
-export const GENRES = [
-  'Mystery', 'Romance', 'Horror', 'Science Fiction', 'Fantasy', 'Comedy', 'Noir', 'Western',
-  'Fairy Tale', 'Thriller', 'Historical', 'Slice of Life', 'Adventure', 'Magical Realism',
-];
+export const GENRES = Object.keys(GENRE_KITS);
 
 /** Repeats make a limit more common. Sundays ignore this list and get SUNDAY_LIMIT. */
 const WORD_LIMITS = [750, 1000, 1000, 1500, 1500, 2000, 2500, 3000];
 const SUNDAY_LIMIT = 5000;
 
-/** How often a prompt is a first line to start from, rather than a premise. */
-const FIRST_LINE_EVERY = 5;
+const WORDS_PER_BANK = 4;
+const TWIST_CHANCE = 1 / 3;
 
-const CHARACTERS = [
-  'A retired stage magician', 'A night-shift nurse', 'A lighthouse keeper', 'A teenager on their first job',
-  'A long-haul trucker', 'A small-town mayor', 'A cartographer', 'A beekeeper', 'A substitute teacher',
-  'A wedding photographer', 'A piano tuner', 'A translator', 'A pair of estranged siblings',
-  'A ferry captain', 'A failed novelist', 'An elderly chess champion', 'A locksmith', 'A museum night guard',
-  'A traveling salesperson', 'A baker', 'A postal worker', 'A court stenographer', 'A storm chaser',
-  'A newly elected ghost', 'A gardener', 'A radio host', 'A deep-sea diver', 'A librarian', 'A stray dog',
-  'A town clockmaker', 'A hospital chaplain',
-];
-
-const SITUATIONS = [
-  'gets a phone call from a number that was disconnected years ago',
-  'finds a letter addressed to them, dated tomorrow',
-  'inherits a house nobody knew existed',
-  'wakes up to find everyone in town speaking a different language',
-  'is asked to keep one small secret that keeps getting bigger',
-  'discovers a door that was not there yesterday',
-  'returns home after twenty years to find nothing has changed',
-  'makes a promise they have no way of keeping',
-  'receives the same anonymous gift every year, and this year it stops',
-  'is mistaken for someone far more important',
-  'has one night to undo a mistake',
-  'finds a photograph of themselves in a place they have never been',
-  'loses the one thing they were told never to lose',
-  'starts getting mail meant for a stranger, and starts answering it',
-  'is the only person who remembers what happened last Tuesday',
-  'has to deliver bad news to someone they have never met',
-  'wins a contest they never entered',
-  'hears their own voice on an old recording, saying things they never said',
-  'gets stuck overnight with their worst enemy',
-  'agrees to a trade and only later learns what they gave away',
-  'follows a stranger who dropped something important',
-  'finds out the town has been keeping a tradition from them',
-  'is offered the job of a lifetime on one strange condition',
-  'tries to return a borrowed object to its owner decades too late',
-  'notices the same person in the background of every memory',
-];
-
-const WRINKLES = [
-  'Someone in the story is lying, and the reader finds out before the narrator does.',
-  'The whole story takes place in a single room.',
-  'The story covers exactly one hour.',
-  'Tell it out of order.',
-  'Write it in the second person.',
-  'A broken clock matters more than it first seems.',
-  'It rains the entire time, and that turns out to be important.',
-  'End on a question.',
-  'Nobody in the story ever says what they actually mean.',
-  'A meal plays a key part.',
-  'Tell it through letters, messages or notes.',
-  'The narrator is not who they seem to be.',
-  'The last line should change how the first line reads.',
-  'Include a song that nobody can quite remember.',
-  'Include a map that is wrong.',
-];
-
-const FIRST_LINES = [
-  'By the time the bells stopped, everyone had already agreed not to talk about it.',
-  'The first thing I stole was a Tuesday.',
-  'Nobody ever came to the door at that hour, so of course I opened it.',
-  'There were eleven chairs at the table, and we were expecting ten people.',
-  'She had rehearsed the apology for nine years, and now he was late.',
-  'The river gave back the car on the same day it gave back the rain.',
-  'Everything in the shop was for sale except the thing I came for.',
-  'It was the kind of town where the map ended a little early.',
-  'I am told I was very brave, which is the first of several lies you will hear.',
-  'The dog knew before any of us did.',
+/**
+ * The order shapes come around in. Hand-written scenarios are the best prompts, so they get the
+ * most days. The length is 13 because it shares no factor with the 7-day week or the 14 genres,
+ * so every genre meets every shape, and no shape gets stuck on one weekday.
+ */
+const SHAPE_ORDER = [
+  'scenario', 'opening', 'scenario', 'form', 'object', 'scenario', 'spoken',
+  'pov', 'scenario', 'gathering', 'closing', 'scenario', 'words',
 ];
 
 /**
+ * Shapes a twist can join. The rest already have a strict rule, and the best prompts give one
+ * clear hook, so piling on more would make them worse.
+ */
+const TWIST_SHAPES = new Set(['scenario', 'object', 'gathering', 'spoken']);
+
+/**
  * Hand-written days. These replace any part of the generated challenge. For example:
- *   '2026-12-25': { genre: 'Fairy Tale', wordLimit: 2000, prompt: '...', wrinkle: null },
+ *   '2026-12-25': { genre: 'Fairy Tale', wordLimit: 2000, title: '...', prompt: '...', wrinkle: null },
  * @type {Record<string, Partial<Challenge>>}
  */
 const OVERRIDES = {};
@@ -129,18 +82,94 @@ function bagPick(list, name, dayIndex) {
   return bag[dayIndex - cycle * n];
 }
 
-/**
- * Walks one fixed shuffle in order, so each item is as far from its repeat as possible. Keep
- * CHARACTERS and SITUATIONS at lengths that share no factor (31 and 25 now): a pairing then
- * can't come back for their product in days, which is 775.
- */
+/** Walks one fixed shuffle in order, so each item is as far from its repeat as possible. */
 function walk(list, name, index) {
   const n = list.length;
   return shuffled(list, name)[((index % n) + n) % n];
 }
 
-const premise = (character, situation) => `${character} ${situation}.`;
-const firstLinePrompt = (line) => `Begin your story with this line: "${line}"`;
+const mod = (n, size) => ((n % size) + size) % size;
+
+const shapeOfDay = (day) => SHAPE_ORDER[mod(day, SHAPE_ORDER.length)];
+
+/** Remembered because working out a scenario's place looks back over every earlier day. */
+const genreCache = new Map();
+
+function genreOfDay(day) {
+  if (!genreCache.has(day)) genreCache.set(day, bagPick(GENRES, 'genre', day));
+  return genreCache.get(day);
+}
+
+/**
+ * How many scenarios a genre has had before a day. A genre only gets a scenario on some of its
+ * days, so counting the real ones means every scenario is used before any comes back.
+ */
+function scenariosBefore(genre, day) {
+  let count = 0;
+  for (let d = 0; d < day; d++) {
+    if (shapeOfDay(d) === 'scenario' && genreOfDay(d) === genre) count++;
+  }
+  return count;
+}
+
+/**
+ * How many times a day's shape has come up before that day. Lists are walked by this count, not
+ * by the day number. Otherwise a shape that lands on every 13th day would only ever reach some
+ * of the items in its list.
+ */
+function shapeCount(day) {
+  const position = mod(day, SHAPE_ORDER.length);
+  const shape = shapeOfDay(day);
+  const perRound = SHAPE_ORDER.filter((s) => s === shape).length;
+  const earlier = SHAPE_ORDER.slice(0, position).filter((s) => s === shape).length;
+  return Math.floor(day / SHAPE_ORDER.length) * perRound + earlier;
+}
+
+/**
+ * Writes the prompt for a genre and shape.
+ * @param {string} genre
+ * @param {string} shape
+ * @param {(list: any[], name: string, offset?: number) => any} pick chooses from a list
+ * @returns {{ title: string, prompt: string }}
+ */
+function writePrompt(genre, shape, pick) {
+  const { story, scenarios } = GENRE_KITS[genre];
+  switch (shape) {
+    case 'opening':
+      return { title: 'Start Here', prompt: `Start ${story} with this line: "${pick(OPENING_LINES, 'opening')}"` };
+    case 'closing':
+      return { title: 'The Last Word', prompt: `Write ${story} that ends with this exact line: "${pick(CLOSING_LINES, 'closing')}"` };
+    case 'spoken':
+      return { title: 'Somebody Has to Say It', prompt: `Write ${story} in which someone has to say: "${pick(SPOKEN_LINES, 'spoken')}"` };
+    case 'pov':
+      return { title: 'Whose Story Is It?', prompt: `Write ${story} from the point of view of ${pick(POINTS_OF_VIEW, 'pov')}.` };
+    case 'form':
+      return { title: 'Odd Format', prompt: `Tell ${story} entirely as ${pick(STORY_FORMS, 'form')}.` };
+    case 'gathering':
+      return { title: 'Something Goes Wrong', prompt: `Set ${story} at ${pick(GATHERINGS, 'gathering')}, and let something go wrong.` };
+    case 'object':
+      return { title: 'The Object', prompt: `Build ${story} around ${pick(OBJECTS, 'object')}.` };
+    case 'words': {
+      const words = Array.from({ length: WORDS_PER_BANK }, (_, i) => pick(WORD_BANK, 'words', i));
+      return { title: 'Four Words', prompt: `Write ${story} that uses all four of these words: ${words.join(', ')}.` };
+    }
+    default: {
+      const [title, prompt] = pick(scenarios, `scenario-${genre}`);
+      return { title, prompt };
+    }
+  }
+}
+
+/**
+ * Half the twists come from the general list, and half ban the genre's most tired words. A ban
+ * can't be fair if the prompt itself uses one of the words, so those days get a general twist.
+ */
+function writeTwist(genre, prompt, useBanned, general) {
+  const { banned } = GENRE_KITS[genre];
+  const clashes = banned.some((word) => new RegExp(`\\b${word}`, 'i').test(prompt));
+  if (!useBanned || clashes) return general;
+  return `Don't use any of these words: ${banned.map((word) => `"${word}"`).join(', ')}.`;
+}
 
 /**
  * The challenge for a date.
@@ -150,13 +179,24 @@ const firstLinePrompt = (line) => `Begin your story with this line: "${line}"`;
 export function dailyChallenge(dateStr) {
   const day = daysBetween(LAUNCH_DATE, dateStr);
   const rng = createRng(`novle-${dateStr}`);
+  const genre = genreOfDay(day);
+  const shape = shapeOfDay(day);
+  const wordLimit = isSunday(dateStr) ? SUNDAY_LIMIT : rng.pick(WORD_LIMITS);
+  const count = shape === 'scenario' ? scenariosBefore(genre, day) : shapeCount(day);
+  const pick = (list, name, offset = 0) => {
+    const step = name === 'words' ? WORDS_PER_BANK : 1;
+    return walk(list, name, count * step + offset);
+  };
+  const rollTwist = rng.chance(TWIST_CHANCE);
+  const useBanned = rng.chance(0.5);
+  const written = writePrompt(genre, shape, pick);
   const generated = {
-    genre: bagPick(GENRES, 'genre', day),
-    wordLimit: isSunday(dateStr) ? SUNDAY_LIMIT : rng.pick(WORD_LIMITS),
-    prompt: day % FIRST_LINE_EVERY === 0
-      ? firstLinePrompt(walk(FIRST_LINES, 'first-line', day / FIRST_LINE_EVERY))
-      : premise(walk(CHARACTERS, 'character', day), walk(SITUATIONS, 'situation', day)),
-    wrinkle: rng.chance(0.5) ? walk(WRINKLES, 'wrinkle', day) : null,
+    genre,
+    wordLimit,
+    ...written,
+    wrinkle: TWIST_SHAPES.has(shape) && rollTwist
+      ? writeTwist(genre, written.prompt, useBanned, walk(TWISTS, 'twist', day))
+      : null,
   };
   return { ...generated, ...OVERRIDES[dateStr] };
 }
@@ -168,13 +208,20 @@ export function dailyChallenge(dateStr) {
  */
 export function practiceChallenge(seed) {
   const rng = createRng(`practice-${seed}`);
+  const genre = rng.pick(GENRES);
+  const shape = rng.pick(SHAPE_ORDER);
+  const wordLimit = rng.pick(WORD_LIMITS);
+  // Shuffling first means a word bank can't pick the same word twice.
+  const words = shuffled(WORD_BANK, `practice-words-${seed}`);
+  const pick = (list, name, offset = 0) => (name === 'words' ? words[offset] : rng.pick(list));
+  const written = writePrompt(genre, shape, pick);
+  const rollTwist = rng.chance(TWIST_CHANCE);
+  const useBanned = rng.chance(0.5);
   return {
-    genre: rng.pick(GENRES),
-    wordLimit: rng.pick(WORD_LIMITS),
-    prompt: rng.chance(0.2)
-      ? firstLinePrompt(rng.pick(FIRST_LINES))
-      : premise(rng.pick(CHARACTERS), rng.pick(SITUATIONS)),
-    wrinkle: rng.chance(0.5) ? rng.pick(WRINKLES) : null,
+    genre,
+    wordLimit,
+    ...written,
+    wrinkle: TWIST_SHAPES.has(shape) && rollTwist ? writeTwist(genre, written.prompt, useBanned, rng.pick(TWISTS)) : null,
   };
 }
 
@@ -183,6 +230,7 @@ export function practiceChallenge(seed) {
  * @param {Challenge} challenge
  * @returns {string}
  */
-export function fullPrompt(challenge) {
-  return challenge.wrinkle ? `${challenge.prompt} Wrinkle: ${challenge.wrinkle}` : challenge.prompt;
+export function fullPrompt({ title, prompt, wrinkle }) {
+  const name = title ? `${title}${/[.?!]$/.test(title) ? '' : '.'} ` : '';
+  return `${name}${prompt}${wrinkle ? ` Optional twist: ${wrinkle}` : ''}`;
 }

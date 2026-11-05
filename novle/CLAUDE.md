@@ -29,7 +29,8 @@ novle/
 │   ├── rng.js          # Seeded PRNG (same as Splotchio's)
 │   ├── words.js        # Word counting and the rules for what can be posted
 │   ├── daily.js        # Dates, challenge number, streak math
-│   ├── prompts.js      # DRAFT prompt generator: date -> genre, word limit, prompt
+│   ├── prompts.js      # Prompt generator: date -> genre, word limit, prompt
+│   ├── prompt-bank.js  # All the prompt content. Edit this one to change prompts
 │   ├── write.js        # The Write view: editor, autosave, modes, saving
 │   ├── mine.js         # The Mine view: saved stories, backup and restore
 │   ├── gallery.js      # Today / All-Time / single story views, posting flow
@@ -47,7 +48,7 @@ novle/
     └── gallery-preview.html  # The gallery on fake data, no backend needed
 ```
 
-`rng`, `words`, `daily` and `prompts` must stay **pure**: no DOM and no `Math.random`.
+`rng`, `words`, `daily`, `prompts` and `prompt-bank` must stay **pure**: no DOM and no `Math.random`.
 
 ## 3. How a day works
 
@@ -65,38 +66,55 @@ novle/
 - **Unsaved work is never lost at midnight.** A leftover draft from an earlier day is filed in Mine automatically.
 - **The daily prompt popup shows once per day**, and only on the Write tab. This is a deliberate change from Splotchio's popup on every open, since writers come back to the same draft many times and a shared story link shouldn't open behind a popup.
 
-## 4. Prompts (DRAFT: still being workshopped)
+## 4. Prompts
 
-William hasn't settled how prompts should be written. `js/prompts.js` is a working draft so the rest of the game can run. **The word lists are placeholders, and it's expected that they'll be replaced.**
+`js/prompts.js` decides what each day gets. `js/prompt-bank.js` holds all the content and is the file to edit. Reedsy, Writer's Digest and creativewritingprompts.com were studied for what makes a prompt work. **Their prompts are not copied, and nothing from them should be pasted in.**
 
-### What the draft does
+### What makes a good prompt
+
+- **One concrete hook, then get out of the way.** Leave the plot and the ending to the writer.
+- **Many shapes.** The same sentence pattern every day gets stale fast.
+- **The genre has to matter.** It's either in the sentence or the prompt was written for it.
+- **Don't assign a job or a name** unless that's the point of the idea.
+- **A short name** gives the prompt personality.
+
+### How a day is built
 
 - **Genre**: drawn from a shuffled bag, so every genre appears once before any repeats, and never twice in a row.
-- **Word limit**: one of 750 to 3,000 on normal days. Sundays are always 5,000 ("long Sunday"), echoing Splotchio's Cursed Sundays.
-- **Prompt**: one of two shapes:
-  - Most days, a **character + situation** ("A retired stage magician gets a phone call from a number that was disconnected years ago."). Each list walks one fixed shuffle. Their lengths (31 and 25) share no factor, so a pairing can't repeat for 775 days. Keep it that way when editing the lists.
-  - Every fifth day, a **first line** to start the story with. There are only 10 so far, so they start repeating after 50 days. This list needs to grow first.
-- **Wrinkle**: about half of days add an optional twist ("Someone in the story is lying, and the reader finds out before the narrator does.").
-- **Overrides**: `OVERRIDES` maps a date to a hand-written challenge, for holidays and special days.
+- **Word limit**: one of 750 to 3,000 on normal days. Sundays are always 5,000.
+- **Shape**: `SHAPE_ORDER` repeats every 13 days. It's 13 because that shares no factor with the 7-day week or the 14 genres, so every genre meets every shape.
 
-### Where prompts could come from
-
-| Option | Good | Bad |
+| Shape | Share | Example |
 |---|---|---|
-| **A. Combining lists** (the draft) | Free, offline, endless, instant | Some combinations will be flat or odd. Needs good lists |
-| **B. Hand-written calendar** (`OVERRIDES`) | The best quality | William has to write one a day, forever |
-| **C. Taken from online** | Lots of material | Most prompt sites and subreddits are other people's writing, so it needs permission or a license. Public domain first lines (Project Gutenberg) are the safe version |
-| **D. AI batches, reviewed by hand** | Fresh ideas, quality control | Someone has to review them. Must run offline and get committed as a file, since a browser can't hold an API key on GitHub Pages |
-| **E. Community votes** | Players feel ownership | Needs a player base, moderation and new tables |
+| `scenario` | 5 of 13 | Hand-written for the genre: "The ring has thirteen keys, and the building has twelve doors." |
+| `opening` | 1 of 13 | Start a western with this line: "..." |
+| `closing` | 1 of 13 | Write a thriller that ends with this exact line: "..." |
+| `spoken` | 1 of 13 | Write a romance in which someone has to say: "..." |
+| `pov` | 1 of 13 | Write a mystery from the point of view of the getaway driver. |
+| `form` | 1 of 13 | Tell a fairy tale entirely as a court transcript. |
+| `gathering` | 1 of 13 | Set a noir story at a wedding, and let something go wrong. |
+| `object` | 1 of 13 | Build a comedy around a key that fits nothing. |
+| `words` | 1 of 13 | Write a horror story that uses all four of these words: ... |
 
-**Recommended path:** keep A as the always-working fallback, grow the lists, and use `OVERRIDES` for favorites. Then generate a month at a time with D into a reviewed file, and consider E once there's an audience. Public domain first lines from C would fit neatly into the existing first-line shape.
+- **Optional twist**: about a third of days on the `scenario`, `object`, `gathering` and `spoken` shapes. Half are general and half ban the genre's most tired words ("Don't use any of these words: "love", "heart"..."), unless the prompt itself uses one of them. The other shapes already have a strict rule, so they never get one. A twist must never decide the form, the narrator or the ending, since it could clash with a shape.
+- **Overrides**: `OVERRIDES` maps a date to a hand-written challenge, for holidays and special days.
 
 ### Rules for changing prompts
 
-- Changing any list **reshuffles every day**, including today and past days, for anyone who loads the new code. Ship list changes close to midnight, or start the new lists from a future date.
+- **Changing a list reshuffles the days that use it**, including today, for anyone who loads the new code. Ship list changes close to midnight.
+- Adding a whole genre also changes `GENRES`, which reshuffles the genre of every day.
 - Posts and saved stories store a **snapshot** of the genre, word limit and prompt they answered, so old posts always show the right prompt.
-- Any new source must fit the same shape: `{ genre, wordLimit, prompt, wrinkle }`.
-- Everything in the lists must be original or properly licensed.
+- Each genre needs at least 8 scenarios, and uses them all before repeating one. With 8 each, the same prompt typically comes back after about 10 months (130 days at the very soonest, across all shapes), so adding more is the best way to improve the game over time.
+- Generic items must work in any genre and any era. Nothing like "a voicemail", which breaks a western.
+- Everything must be original or properly licensed.
+
+### Where more prompts could come from
+
+- **Hand-written** (best): add to `prompt-bank.js`, or use `OVERRIDES` for one day.
+- **AI batches, reviewed by hand**: must run offline and get committed as a file, since a browser can't hold an API key on GitHub Pages.
+- **Public domain first lines** (Project Gutenberg) would fit the `opening` shape. Most prompt sites and subreddits are other people's writing and need permission.
+- **Community votes**: needs a player base, moderation and new tables.
+- **Weekly themes**: Reedsy groups its prompts under a weekly theme, which could be a fun later addition.
 
 ### Known weak spot
 
@@ -150,12 +168,12 @@ ES2022, `const`/`let`, named exports, 2-space indent, semicolons, single quotes.
 
 ## 10. Status and next steps
 
-**Built:** editor, autosave, streaks, Mine with backup, draft prompt generator, gallery UI, posting flow, schema.
+**Built:** editor, autosave, streaks, Mine with backup, prompt generator, gallery UI, posting flow, schema.
 
 **William still needs to:**
 1. Create a new Supabase project for Novle and fill in `js/config.js` (see `supabase/README.md`). Until then the gallery tabs show an offline state.
 2. Set `LAUNCH_DATE` in `js/daily.js` to the real launch day. It decides which day is Novle #1.
-3. Decide on the prompt plan (§4).
+3. Keep growing the prompt bank (§4).
 4. Add Novle to the main site if wanted. That's outside this folder, so ask first.
 
 **Open questions:**
