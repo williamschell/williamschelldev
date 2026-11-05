@@ -6,8 +6,8 @@
 // else works. See supabase/README.md for how to fill them in.
 
 const PRODUCTION = {
-  url: '',
-  anonKey: '',
+  url: 'https://ainyrgjpyehvujkdekzx.supabase.co',
+  anonKey: 'sb_publishable_oL8_uB9jy0OLm1RHiZVEyA_UvRxD_I0',
 };
 
 // A separate project for development, so testing never touches production data.
