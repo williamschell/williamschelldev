@@ -1,4 +1,4 @@
--- Splotchio database: tables, constraints, triggers, RLS policies and storage rules.
+-- Splotchle database: tables, constraints, triggers, RLS policies and storage rules.
 -- Run this whole file once in the Supabase SQL editor on an empty project. To change the
 -- database later, append a dated migration at the bottom so it can always be rebuilt from here.
 --

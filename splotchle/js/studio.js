@@ -8,9 +8,11 @@ import {
   localDateString, dailySeed, dailyParams, challengeNumber, emptyStreak, recordDaily, currentStreak, LAUNCH_DATE,
 } from './daily.js';
 import { DrawingLayer } from './draw.js';
+import { BRUSHES } from './brushes.js';
+import { extractPalette } from './palette.js';
 import { getDraft, putDraft, putArtwork, readSetting, writeSetting } from './storage.js';
 import {
-  renderPanel, canvasToBlob, downloadArt, GHOST_OPACITY, OUTLINE_WIDTH,
+  renderPanel, paintBlob, canvasToBlob, downloadArt, PAPER, GHOST_OPACITY, OUTLINE_WIDTH,
 } from './export.js';
 import { encodeShareQuery, decodeShareQuery } from './share.js';
 import {
@@ -21,6 +23,7 @@ const SWATCHES = [
   ['#1b1a17', 'Ink'], ['#ffffff', 'White'], ['#e5352b', 'Red'], ['#ff8a1f', 'Orange'],
   ['#ffd21f', 'Yellow'], ['#1fa855', 'Green'], ['#2a6dff', 'Blue'], ['#a33ee8', 'Purple'],
 ];
+const PALETTE_SIZE = SWATCHES.length;
 const BLOB_COLOR_NAMES = ['Coral', 'Blue', 'Green', 'Purple', 'Pink', 'Teal', 'Amber', 'Indigo'];
 const PARAM_KEYS = Object.keys(DEFAULT_PARAMS);
 const THUMB_SIZE = 384;
@@ -66,6 +69,11 @@ export function createStudio({ onPost }) {
     size: ARTBOARD,
     // More than 2x costs a lot of memory on phones and is hard to see.
     scale: Math.min(2, Math.max(1, window.devicePixelRatio || 1)),
+    paintBackdrop: (ctx) => {
+      ctx.fillStyle = PAPER;
+      ctx.fillRect(0, 0, ARTBOARD, ARTBOARD);
+      if (state.blobStyle.visible) paintBlob(ctx, state);
+    },
     onChange: () => {
       state.dirty = true;
       if (!layer.hasArt) state.unlocked = false;
@@ -164,12 +172,15 @@ export function createStudio({ onPost }) {
 
   function syncTool() {
     const {
-      tool, color, size, pressure,
+      tool, brush, color, size, pressure,
     } = layer.tool;
     $('tool-brush').setAttribute('aria-pressed', String(tool === 'brush'));
+    $('tool-fill').setAttribute('aria-pressed', String(tool === 'fill'));
     $('tool-eraser').setAttribute('aria-pressed', String(tool === 'eraser'));
+    $('brush-type').value = brush;
+    $('stage').classList.toggle('filling', tool === 'fill');
     for (const swatch of $('swatches').querySelectorAll('[data-color]')) {
-      swatch.setAttribute('aria-pressed', String(swatch.dataset.color === color && tool === 'brush'));
+      swatch.setAttribute('aria-pressed', String(swatch.dataset.color === color && tool !== 'eraser'));
     }
     $('custom-color').value = color;
     $('brush-size').value = size;
@@ -180,7 +191,9 @@ export function createStudio({ onPost }) {
     dot.style.background = tool === 'eraser' ? 'transparent' : color;
     dot.classList.toggle('erasing', tool === 'eraser');
     $('pen-pressure').checked = pressure;
-    writeSetting('brush', { color, size, pressure });
+    writeSetting('brush', {
+      color, size, pressure, brush,
+    });
   }
 
   // --- Autosave ---
@@ -544,7 +557,8 @@ export function createStudio({ onPost }) {
 
   function setColor(color) {
     layer.tool.color = color;
-    layer.tool.tool = 'brush';
+    // Picking a color means you're about to paint with it, unless the fill tool is out.
+    if (layer.tool.tool === 'eraser') layer.tool.tool = 'brush';
     syncTool();
   }
 
@@ -558,10 +572,23 @@ export function createStudio({ onPost }) {
     changed();
   }
 
-  function buildSwatches() {
+  /** @returns {string[]|null} the saved custom palette, or null for the standard one */
+  function savedPalette() {
+    const saved = readSetting('palette', null);
+    const valid = Array.isArray(saved) && saved.length > 0 && saved.length <= PALETTE_SIZE
+      && saved.every((color) => /^#[0-9a-f]{6}$/i.test(color));
+    return valid ? saved : null;
+  }
+
+  /** Draws the palette's swatches in front of the custom color picker. */
+  function renderPalette() {
     const host = $('swatches');
-    for (const [color, name] of SWATCHES) {
-      host.append(el('button', {
+    for (const old of host.querySelectorAll('button.swatch')) old.remove();
+    const custom = savedPalette();
+    const entries = custom ? custom.map((color) => [color, color]) : SWATCHES;
+    const picker = host.querySelector('.swatch-custom');
+    for (const [color, name] of entries) {
+      picker.before(el('button', {
         type: 'button',
         class: 'swatch',
         'aria-label': name,
@@ -571,6 +598,31 @@ export function createStudio({ onPost }) {
         onclick: () => setColor(color),
       }));
     }
+    $('palette-reset').hidden = !custom;
+    syncTool();
+  }
+
+  /** Replaces the palette with the colors that are on the canvas right now. */
+  function paletteFromScreen() {
+    const blobColor = state.blobStyle.visible ? state.blobStyle.color : null;
+    const colors = extractPalette(layer.readPixels().data, { max: blobColor ? PALETTE_SIZE - 1 : PALETTE_SIZE });
+    if (colors.length === 0) {
+      toast('Draw something first, then its colors can become your palette.');
+      return;
+    }
+    if (blobColor && !colors.includes(blobColor)) colors.push(blobColor);
+    writeSetting('palette', colors);
+    renderPalette();
+    toast(`Your palette now has ${colors.length === 1 ? 'the 1 color' : `the ${colors.length} colors`} on screen.`);
+  }
+
+  function resetPalette() {
+    writeSetting('palette', null);
+    renderPalette();
+  }
+
+  function buildSwatches() {
+    const host = $('swatches');
     host.append(el('label', { class: 'swatch swatch-custom', title: 'Custom color' },
       el('span', { class: 'visually-hidden' }, 'Custom color'),
       el('input', { id: 'custom-color', type: 'color', oninput: (e) => setColor(e.target.value) })));
@@ -598,14 +650,24 @@ export function createStudio({ onPost }) {
   }
 
   function wire() {
+    for (const [id, name] of BRUSHES) $('brush-type').append(el('option', { value: id }, name));
     buildSwatches();
     const saved = readSetting('brush', null);
+    if (saved && BRUSHES.some(([id]) => id === saved.brush)) layer.tool.brush = saved.brush;
     if (saved && typeof saved.color === 'string') layer.tool.color = saved.color;
     if (saved && Number.isFinite(saved.size)) layer.tool.size = saved.size;
     if (saved && typeof saved.pressure === 'boolean') layer.tool.pressure = saved.pressure;
+    renderPalette();
 
     $('tool-brush').addEventListener('click', () => setTool('brush'));
+    $('tool-fill').addEventListener('click', () => setTool('fill'));
     $('tool-eraser').addEventListener('click', () => setTool('eraser'));
+    $('brush-type').addEventListener('change', (e) => {
+      layer.tool.brush = e.target.value;
+      setTool('brush');
+    });
+    $('palette-from-art').addEventListener('click', paletteFromScreen);
+    $('palette-reset').addEventListener('click', resetPalette);
     $('brush-size').addEventListener('input', (e) => setSize(Number(e.target.value)));
     $('undo').addEventListener('click', () => layer.undo());
     $('redo').addEventListener('click', () => layer.redo());
@@ -733,7 +795,8 @@ export function createStudio({ onPost }) {
     stage.addEventListener('pointerdown', notePen);
     stage.addEventListener('pointermove', (e) => {
       notePen(e);
-      if (e.pointerType === 'touch') {
+      // The fill tool has no size, so it uses a plain crosshair instead of the ring.
+      if (e.pointerType === 'touch' || layer.tool.tool === 'fill') {
         cursor.hidden = true;
         return;
       }
@@ -776,6 +839,7 @@ export function createStudio({ onPost }) {
       }
       if (mod || e.altKey) return;
       if (key === 'b') setTool('brush');
+      else if (key === 'f') setTool('fill');
       else if (key === 'e') setTool('eraser');
       else if (key === '[') setSize(layer.tool.size - (layer.tool.size > 20 ? 5 : 2));
       else if (key === ']') setSize(layer.tool.size + (layer.tool.size >= 20 ? 5 : 2));

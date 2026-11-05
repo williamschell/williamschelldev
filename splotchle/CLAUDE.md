@@ -1,6 +1,6 @@
-# CLAUDE.md — Splotchio
+# CLAUDE.md — Splotchle
 
-Splotchio is a browser drawing challenge. The app generates a weird organic blob, and the artist turns it into a character. Everyone gets the same daily blob, can post their character to a public gallery, and can like other people's. It lives at **https://williamschell.dev/splotchio/** as a folder inside the GitHub Pages repo for williamschell.dev, with Supabase as the only backend.
+Splotchle (originally Splotchio) is a browser drawing challenge. The app generates a weird organic blob, and the artist turns it into a character. Everyone gets the same daily blob, can post their character to a public gallery, and can like other people's. It lives at **https://williamschell.dev/splotchle/** as a folder inside the GitHub Pages repo for williamschell.dev, with Supabase as the only backend.
 
 Read this file before making changes. If something here conflicts with a direct instruction from William, follow William and suggest updating this file.
 
@@ -12,7 +12,7 @@ These come from how the site is hosted. Do not work around them without asking.
 
 - **No build step.** GitHub Pages serves the files exactly as they are committed. Write plain HTML, CSS and native ES modules (`<script type="module">`). Do not use a bundler, TypeScript compilation, JSX, Sass or a `package.json` that the site needs in order to run.
 - **No runtime dependencies from npm.** If a small library is truly needed, copy one pinned file into `vendor/`, add its license header and record it in §10. Prefer writing the code yourself. The project is meant to show off procedural geometry. The one planned exception is `@supabase/supabase-js`, vendored as a single pinned ESM build in `vendor/supabase.js` (§8b).
-- **Relative paths only.** The app is served from the `/splotchio/` subpath, so a root-absolute path like `/assets/x.svg` points at the main site. Use `./assets/x.svg`, and import modules with `./js/...`. Never hard-code `williamschell.dev` except in meta tags.
+- **Relative paths only.** The app is served from the `/splotchle/` subpath, so a root-absolute path like `/assets/x.svg` points at the main site. Use `./assets/x.svg`, and import modules with `./js/...`. Never hard-code `williamschell.dev` except in meta tags.
 - **Supabase is the only backend.** GitHub Pages can't run server code, so the public gallery uses a hosted Supabase project: Postgres for posts and likes, Storage for images, and anonymous Auth for identity. The browser talks to it directly using the public **anon key**. All security comes from Row Level Security policies and database constraints, never from client code. Never commit the `service_role` key or any other secret. Everything except the gallery (drawing, the personal gallery, streaks) must keep working offline or if Supabase is down.
 - **Static and fast.** The first load should stay well under 200 KB, not counting fonts. No analytics or trackers.
 - **Files starting with `_`** are ignored by Jekyll on GitHub Pages. Don't name anything that way, or add a `.nojekyll` file at the repo root if it becomes necessary.
@@ -20,7 +20,7 @@ These come from how the site is hosted. Do not work around them without asking.
 ## 2. Folder layout
 
 ```
-splotchio/
+splotchle/
 ├── index.html          # App shell. Loads css/styles.css and index.js
 ├── index.js            # Entry point: wires up the UI and starts the app
 ├── CLAUDE.md
@@ -35,7 +35,10 @@ splotchio/
 │   ├── blob.js         # generateBlob(params) → { contours, bounds, meta }
 │   ├── transform.js    # Rotate / scale as a 2D matrix
 │   ├── daily.js        # Date → seed, daily challenge logic, streaks
-│   ├── draw.js         # Canvas drawing layer: brushes, eraser, undo/redo
+│   ├── draw.js         # Canvas drawing layer: strokes, fill, eraser, undo/redo
+│   ├── brushes.js      # Brush textures: pencil grain, paintbrush bristles, marker opacity
+│   ├── fill.js         # Flood fill on raw pixels (pure)
+│   ├── palette.js      # Pulls the main colors out of a drawing (pure)
 │   ├── studio.js       # The Draw view: current blob, autosave, all its controls
 │   ├── mine.js         # The Mine view: personal gallery, backup and restore
 │   ├── upload.js       # (not built yet) Image upload, placement and opacity over the blob
@@ -139,6 +142,7 @@ The stage is a fixed-aspect artboard (default 1024×1024 logical units, scaled t
 
 - Transforms (`transform.js`) are stored as `{ rotate, scale }` and composed into one matrix. Art made before flips and stretches were removed may also carry `flipX`, `flipY`, `scaleX` and `scaleY`, which `composeMatrix` still honors so it keeps lining up. They are never baked into `contours`. Export applies the matrix.
 - Once someone starts drawing, changing the blob's transform should ask for confirmation, or be locked, since the art would no longer line up.
+- The stage must stay exactly square (`flex: none`). The SVG keeps its proportions and the canvas stretches, so a squashed stage puts the drawing out of line with the blob.
 - The blob style can be filled, outline or ghost (low opacity), with a color picker. Fill color is saved with the artwork.
 
 ## 6. Drawing
@@ -146,15 +150,19 @@ The stage is a fixed-aspect artboard (default 1024×1024 logical units, scaled t
 - Use Pointer Events for mouse, touch and pen. Call `setPointerCapture`, and set `touch-action: none` on the stage.
 - Smooth strokes with quadratic curves between midpoints, and add pressure-based width when `pointerType === 'pen'`. There's a setting to turn pressure off.
 - Pens: width tapers smoothly along each curve, the eraser end erases, and touch is ignored around pen use so a resting palm doesn't draw.
-- Tools: brush, eraser (`globalCompositeOperation = 'destination-out'`), color picker, size slider, and clear (with confirmation).
+- Tools: brush, fill, eraser (`globalCompositeOperation = 'destination-out'`), color picker, size slider, and clear (with confirmation).
+- Brush types: pen (solid ink, the default), pencil (a grain pattern fixed to the paper), marker (see-through, built on a buffer so a stroke has even opacity) and paintbrush (separately shaded bristles). All randomness comes from the seeded rng, so undo replays strokes exactly. Strokes record their type in `b`, and a stroke with no `b` is a pen stroke.
+- Fill goes by what the artist sees, so it stops at drawn lines and at the blob's edge, and ignores the blob while it's hidden. A fill is stored as the pixel runs it covered, not the point that was clicked, so it replays the same if the blob changes later.
+- Palette: a toolbar button replaces the brush swatches with up to 8 of the main colors on the canvas plus the blob color, saved in the `palette` setting. Another button goes back to the standard palette.
 - Undo/redo: keep a stack of stroke records (points + tool settings), replay them to redraw, and cache a snapshot every ~20 strokes so undo stays fast. Cap the history at around 100 steps.
-- Shortcuts: `B` brush, `E` eraser, `[`/`]` size, `Ctrl/Cmd+Z` undo, `Ctrl/Cmd+Shift+Z` redo, `N` new blob (only when the canvas is empty or after confirming), `H` hide/show the blob.
+- Shortcuts: `B` brush, `F` fill, `E` eraser, `[`/`]` size, `Ctrl/Cmd+Z` undo, `Ctrl/Cmd+Shift+Z` redo, `N` new blob (only when the canvas is empty or after confirming), `H` hide/show the blob.
 
 ## 7. Persistence
 
 - **IndexedDB** (`storage.js`, database `splotchio`, version 1):
   - Store `artworks`: `{ id, createdAt, updatedAt, seed, params, transform, blobStyle, drawingPng: Blob, thumbPng: Blob, isDaily, dailyDate, title }`
   - Store `drafts`: the work-in-progress for the current blob, autosaved (debounced at ~1 s).
+- **The old name stays in storage on purpose.** The IndexedDB name, the `splotchio:` localStorage prefix, the backup file's `app` field and the logo's seed all still say `splotchio`. Changing them would orphan people's saved art and settings or change the logo, and nobody sees them.
 - **localStorage**, keys prefixed `splotchio:`: settings (brush defaults, theme), streak data and the last-opened view.
 - Save the **seed + params** rather than the blob geometry. The blob can always be regenerated, which keeps records small. Bump a `GEN_VERSION` constant whenever the generation output changes, store it with each artwork, and keep older generator versions working (or store the path data as a fallback) so saved art still lines up after an update.
 - Wrap all storage calls in try/catch. Private browsing or a full quota should show a friendly message, not break the app.
@@ -221,10 +229,10 @@ The stage is a fixed-aspect artboard (default 1024×1024 logical units, scaled t
 - **Run locally from the repo root** so the subpath matches production:
   ```bash
   python3 -m http.server 8000
-  # open http://localhost:8000/splotchio/
+  # open http://localhost:8000/splotchle/
   ```
   Opening `index.html` straight from disk will not work, because ES modules need HTTP.
-- **Tests**: `tests/index.html` loads the pure modules and runs simple assertions in the browser (no framework). At minimum:
+- **Tests**: `tests/index.html` loads the pure modules and runs simple assertions in the browser (no framework). So far it only covers `fill` and `palette`, and the rest of this list still needs writing. At minimum:
   - `rng`: the same seed gives the same sequence, and different seeds give different ones.
   - `generateBlob`: fixed seeds produce identical path strings (snapshot a few in the test file, and update them deliberately when `GEN_VERSION` changes).
   - `contour`: every loop is closed, and holes wind opposite to outer loops.
@@ -251,8 +259,8 @@ The stage is a fixed-aspect artboard (default 1024×1024 logical units, scaled t
 - **UI palette**: blue and white in light mode, maroon and black in dark mode, for all UI including delete buttons and likes. Corners are nearly square (`--radius`). Only brush previews are round.
 - Show the blob in a single bold color on a white paper background, with an ink-like default brush. The paper stays white in both themes, so art looks the same everywhere. Brush and blob colors are art, not UI, and stay colorful. The artist picks the blob color from a row beside the canvas.
 - Every time the site opens, a popup tells the artist to draw whatever comes to mind.
-- The wordmark "Splotchio" can itself be a blob-ish shape generated by the app.
-- Make sure the main williamschell.dev site links to `/splotchio/`, and that Splotchio links back to the main site in its header or footer.
+- The wordmark "Splotchle" can itself be a blob-ish shape generated by the app.
+- Make sure the main williamschell.dev site links to `/splotchle/`, and that Splotchle links back to the main site in its header or footer.
 
 ## 12. Out of scope (for now)
 
@@ -265,8 +273,9 @@ The stage is a fixed-aspect artboard (default 1024×1024 logical units, scaled t
 ## 13. Working agreements for Claude
 
 - Build in the MVP order in §3, one feature at a time, and leave the app working after each step.
-- Stay inside `splotchio/`. Don't touch other parts of the williamschell.dev repo unless asked (adding a link to Splotchio on the homepage is the expected exception, and should be confirmed first).
+- Stay inside `splotchle/`. Don't touch other parts of the williamschell.dev repo unless asked (adding a link to Splotchle on the homepage is the expected exception, and should be confirmed first).
 - Don't add dependencies, a build step or any backend beyond Supabase without asking.
 - Every schema or policy change goes into `supabase/schema.sql` (append migrations in order, with a dated comment) so the database can be rebuilt from the repo. Never weaken an RLS policy just to make a feature work.
 - When changing generation output, bump `GEN_VERSION` and update the test snapshots in the same change.
+- `splotchio/index.html` only redirects old links to `../splotchle/`, keeping the query and hash. Leave it there.
 - Keep this file up to date when the architecture changes.

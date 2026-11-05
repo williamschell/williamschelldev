@@ -382,7 +382,7 @@ export function createGallery({ api, root }) {
         }
       } catch (err) {
         if (token !== viewToken) return;
-        console.warn('Splotchio gallery:', err);
+        console.warn('Splotchle gallery:', err);
         observer?.disconnect();
         if (!started) {
           host.replaceChildren(offlineState(() => runGrid(host, { query, showDate, emptyState })));
@@ -536,7 +536,7 @@ export function createGallery({ api, root }) {
       ));
     } catch (err) {
       if (token !== viewToken) return;
-      console.warn('Splotchio gallery:', err);
+      console.warn('Splotchle gallery:', err);
       root.replaceChildren(offlineState(() => showPost(id)));
     }
   }
@@ -594,13 +594,16 @@ export function createGallery({ api, root }) {
             toast("You're in today's gallery!");
             window.location.hash = '#/today';
           } catch (err) {
-            console.warn('Splotchio post:', err);
+            console.warn('Splotchle post:', err);
             submit.disabled = false;
             submit.textContent = 'Post it';
             if (err.code === '23505') {
               error.textContent = "You've already posted today. To post again, delete your old post from the gallery first.";
             } else if (err.code === '23514') {
               error.textContent = "That name isn't allowed. Try a different one.";
+            } else if (err.code === 'anonymous_provider_disabled') {
+              // See step 2 of supabase/README.md: "Allow anonymous sign-ins" in the dashboard.
+              error.textContent = 'Gallery sign-in is switched off right now, so nothing can be posted. Your drawing is still safe here.';
             } else {
               error.textContent = err.message?.includes('too detailed')
                 ? err.message

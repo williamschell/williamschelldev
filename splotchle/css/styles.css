@@ -1,4 +1,4 @@
-/* Splotchio. Mobile first: the wider layouts are at the bottom of each section. */
+/* Splotchle. Mobile first: the wider layouts are at the bottom of each section. */
 
 :root {
   --paper: #ffffff;
@@ -273,6 +273,9 @@ img, svg, canvas { display: block; }
 
 .stage {
   position: relative;
+  /* Never let the column squash this. The blob keeps its proportions and the canvas doesn't,
+     so a stage that isn't square puts the drawing out of line with the blob. */
+  flex: none;
   width: var(--stage-size);
   min-width: min(100%, 280px);
   aspect-ratio: 1;
@@ -297,6 +300,7 @@ img, svg, canvas { display: block; }
 
 @media (hover: hover) and (pointer: fine) {
   #draw-canvas { cursor: none; }
+  .filling #draw-canvas { cursor: crosshair; }
 }
 
 .cursor {
@@ -323,6 +327,12 @@ img, svg, canvas { display: block; }
 }
 
 .tool-group { display: flex; gap: 2px; }
+
+.brush-type select { min-height: 44px; width: auto; }
+
+.palette-group { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px; }
+
+.icon-button[hidden] { display: none; }
 
 .swatches { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; }
 
@@ -851,8 +861,17 @@ input[type='text'], input[type='date'], select {
     z-index: auto;
   }
 
+  /* Slimmer controls keep the toolbar on one row, so the stage can stay big. */
+  .toolbar .icon-button { width: 38px; }
+  .size-control input { width: 90px; }
+
   .panel-toggle, .panel-close { display: none; }
   .blob-colors { flex: 0 1 auto; margin-right: 8px; }
+}
+
+/* Too narrow for one toolbar row beside the panel, so leave room for a second. */
+@media (min-width: 960px) and (max-width: 1279px) {
+  .studio-main { --stage-size: min(100%, calc(100dvh - 320px)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

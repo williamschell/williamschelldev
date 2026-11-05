@@ -1,4 +1,4 @@
-# Setting up the Splotchio gallery on Supabase
+# Setting up the Splotchle gallery on Supabase
 
 The app works without any of this. Until `js/config.js` is filled in, the Today and All-Time tabs show a friendly offline state, and drawing, saving and streaks work as normal.
 

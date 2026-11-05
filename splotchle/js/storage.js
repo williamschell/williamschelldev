@@ -1,6 +1,8 @@
 // IndexedDB and localStorage wrappers. Private browsing or a full quota shouldn't break
 // the app, so nothing here throws: failures return null or false and tell the listener.
 
+// These keep the game's original name on purpose. Changing them would orphan everyone's saved
+// art, drafts, streaks and settings, and nobody ever sees them.
 const DB_NAME = 'splotchio';
 const DB_VERSION = 1;
 const PREFIX = 'splotchio:';
@@ -50,7 +52,7 @@ async function guarded(action, fallback, message) {
   try {
     return await action();
   } catch (err) {
-    console.warn('Splotchio storage:', err);
+    console.warn('Splotchle storage:', err);
     errorListener(message);
     return fallback;
   }

@@ -53,7 +53,7 @@ export function createMine({ root, openInStudio }) {
         thumbPng: await toDataUrl(r.thumbPng),
       })));
       const payload = {
-        app: 'splotchio',
+        app: 'splotchio', // the original name, kept so backups stay compatible both ways
         version: BACKUP_VERSION,
         exportedAt: new Date().toISOString(),
         streak: readSetting('streak', emptyStreak()),
@@ -61,7 +61,7 @@ export function createMine({ root, openInStudio }) {
       };
       downloadBlob(
         new Blob([JSON.stringify(payload)], { type: 'application/json' }),
-        `splotchio-backup-${localDateString()}.json`,
+        `splotchle-backup-${localDateString()}.json`,
       );
     } catch {
       toast("Couldn't build the backup.");
@@ -99,7 +99,7 @@ export function createMine({ root, openInStudio }) {
         });
       }
     } catch {
-      toast("That doesn't look like a Splotchio backup.");
+      toast("That doesn't look like a Splotchle backup.");
       return;
     }
     toast(skipped ? `Imported ${imported}. Skipped ${skipped} that couldn't be read.` : `Imported ${imported}.`);

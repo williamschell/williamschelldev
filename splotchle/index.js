@@ -13,7 +13,8 @@ import {
 
 onStorageError((message) => toast(message));
 
-// The logo is a blob too, generated the same way as every other one.
+// The logo is a blob too, generated the same way as every other one. The seed keeps the
+// game's original name so the logo's shape doesn't change.
 document.querySelector('#logo path').setAttribute(
   'd',
   generateBlob({ seed: 'splotchio-logo', params: PRESETS.weird }).pathData,
