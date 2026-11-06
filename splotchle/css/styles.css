@@ -152,7 +152,12 @@ img, svg, canvas { display: block; }
   gap: 2px;
   flex: 1;
   min-width: 0;
+  /* Five tabs don't fit on a phone, so the row scrolls instead of widening the page. */
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+
+.tabs::-webkit-scrollbar { display: none; }
 
 .tab {
   padding: 8px 10px;
@@ -588,6 +593,10 @@ input[type='text'], input[type='date'], select {
 }
 
 .toast.show { transform: translate(-50%, 0); visibility: visible; }
+
+/* A toast covers the Post button while it's up, so clicks pass through all but its action. */
+.toast { pointer-events: none; }
+.toast button { pointer-events: auto; }
 
 /* Gallery and Mine */
 

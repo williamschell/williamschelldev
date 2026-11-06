@@ -6,7 +6,7 @@ import { SUPABASE, GALLERY_CONFIGURED } from './config.js';
 export const PAGE_SIZE = 24;
 
 const BUCKET = 'posts';
-const POST_COLUMNS = 'id,user_id,daily_date,gen_version,transform,blob_style,image_path,thumb_path,'
+const POST_COLUMNS = 'id,user_id,daily_date,seed,params,gen_version,transform,blob_style,image_path,thumb_path,'
   + 'like_count,hidden,created_at,profiles(display_name)';
 
 const ADJECTIVES = ['Wobbly', 'Squishy', 'Sleepy', 'Lumpy', 'Gentle', 'Curious', 'Bouncy', 'Soggy', 'Fuzzy', 'Tiny', 'Grumpy', 'Jolly'];
@@ -114,12 +114,15 @@ function keysetFilter(sort, cursor) {
  * @param {'new'|'top'} options.sort
  * @param {string} [options.date] only this daily date
  * @param {string} [options.since] only daily dates on or after this one
+ * @param {boolean} [options.unlimited] free play posts instead of daily ones
  * @param {object|null} [options.cursor] the last post of the previous page
  * @returns {Promise<{ posts: object[], hasMore: boolean }>}
  */
-export async function listPosts({ sort, date, since, cursor = null }) {
+export async function listPosts({ sort, date, since, unlimited = false, cursor = null }) {
   const client = await getClient();
   let query = client.from('posts').select(POST_COLUMNS);
+  // The two kinds never mix, so unlimited posts can't reach Today or All-Time.
+  query = unlimited ? query.is('daily_date', null) : query.not('daily_date', 'is', null);
   if (date) query = query.eq('daily_date', date);
   if (since) query = query.gte('daily_date', since);
   if (cursor) query = query.or(keysetFilter(sort, cursor));
@@ -211,7 +214,9 @@ const extensionFor = (blob) => (blob.type === 'image/webp' ? 'webp' : 'png');
  * Uploads the images and creates the post. If the insert fails, the uploads are removed so
  * nothing is left orphaned in storage.
  * @param {object} post
- * @param {string} post.dailyDate
+ * @param {string|null} post.dailyDate null for an unlimited post
+ * @param {string} [post.seed] an unlimited post's blob seed
+ * @param {object} [post.params] an unlimited post's blob params
  * @param {number} post.genVersion
  * @param {object} post.transform
  * @param {object} post.blobStyle
@@ -219,13 +224,17 @@ const extensionFor = (blob) => (blob.type === 'image/webp' ? 'webp' : 'png');
  * @param {Blob} post.thumb
  * @returns {Promise<string>} the new post's id
  */
-export async function createPost({ dailyDate, genVersion, transform, blobStyle, image, thumb }) {
+export async function createPost({
+  dailyDate, seed = null, params = null, genVersion, transform, blobStyle, image, thumb,
+}) {
   const userId = await ensureUser();
   const client = await getClient();
   const storage = client.storage.from(BUCKET);
   const name = crypto.randomUUID();
-  const imagePath = `${userId}/${dailyDate}/${name}.${extensionFor(image)}`;
-  const thumbPath = `${userId}/${dailyDate}/${name}-thumb.${extensionFor(thumb)}`;
+  // Storage only accepts folders named for a current date. UTC is always inside that window.
+  const folder = dailyDate ?? new Date().toISOString().slice(0, 10);
+  const imagePath = `${userId}/${folder}/${name}.${extensionFor(image)}`;
+  const thumbPath = `${userId}/${folder}/${name}-thumb.${extensionFor(thumb)}`;
 
   unwrap(await storage.upload(imagePath, image, { contentType: image.type, cacheControl: '31536000' }));
   try {
@@ -233,6 +242,8 @@ export async function createPost({ dailyDate, genVersion, transform, blobStyle, 
     const row = unwrap(await client.from('posts').insert({
       user_id: userId,
       daily_date: dailyDate,
+      seed,
+      params,
       gen_version: genVersion,
       transform,
       blob_style: blobStyle,

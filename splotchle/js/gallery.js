@@ -1,4 +1,4 @@
-// The public gallery views: Today, All-Time and single posts, plus the posting flow.
+// The public gallery views: Today, All-Time, Unlimiteds and single posts, plus the posting flow.
 // The api module is passed in, which lets tests/gallery-preview.html run on fake data.
 
 import {
@@ -22,26 +22,37 @@ const MAX_THUMB_BYTES = 80 * 1024;
 const IMAGE_SIZE = 1024;
 const THUMB_SIZE = 384;
 const LIKE_DEBOUNCE_MS = 300;
+const PATH_CACHE_LIMIT = 500;
 
-/** Generated blob paths per date, since a page of posts often shares one. */
+/** Generated blob paths, since a page of daily posts shares one and scrolling revisits them. */
 const pathCache = new Map();
 
 /**
- * The daily blob's path. It's generated rather than downloaded, which also proves which
- * blob the art was drawn on.
- * @returns {string|null} null if this client has no generator for that version
+ * A blob's path. It's generated rather than downloaded, which also proves which blob the art
+ * was drawn on. generateBlob clamps params, so other people's posts can't ask for anything
+ * outside the normal range.
+ * @returns {string|null} null if this client can't generate it, such as an unknown version
  */
-function dailyPath(date, genVersion) {
-  const key = `${date}:${genVersion}`;
+function cachedPath(seed, params, genVersion) {
+  const key = `${genVersion}:${JSON.stringify(params)}:${seed}`;
   if (!pathCache.has(key)) {
+    // Unlimited posts each have their own blob, so an endless scroll could otherwise keep them all.
+    if (pathCache.size >= PATH_CACHE_LIMIT) pathCache.clear();
     try {
-      pathCache.set(key, generateBlob({ seed: dailySeed(date), params: dailyParams(date), genVersion }).pathData);
+      pathCache.set(key, generateBlob({ seed, params, genVersion }).pathData);
     } catch {
       pathCache.set(key, null);
     }
   }
   return pathCache.get(key);
 }
+
+const dailyPath = (date, genVersion) => cachedPath(dailySeed(date), dailyParams(date), genVersion);
+
+/** The path of the blob a post was drawn on, whichever kind of post it is. */
+const postPath = (post) => (post.daily_date
+  ? dailyPath(post.daily_date, post.gen_version)
+  : cachedPath(post.seed, post.params, post.gen_version));
 
 /** Style data comes from other people's posts, so only accept known shapes. */
 function safeStyle(style) {
@@ -76,6 +87,9 @@ function blobSvg(pathData, transform, style) {
 
 const nameOf = (post) => post.profiles?.display_name ?? 'Anonymous';
 
+/** The local date a post went up. Unlimited posts have no daily date to show instead. */
+const postedOn = (post) => formatDate(localDateString(new Date(post.created_at)));
+
 /** The date N days before a YYYY-MM-DD date. */
 function daysBefore(dateStr, n) {
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -84,9 +98,9 @@ function daysBefore(dateStr, n) {
 }
 
 /**
- * @param {{ api: typeof import('./api.js'), root: HTMLElement }} deps
+ * @param {{ api: typeof import('./api.js'), root: HTMLElement, openFreePlay: () => void }} deps
  */
-export function createGallery({ api, root }) {
+export function createGallery({ api, root, openFreePlay }) {
   /** Bumped whenever the view changes, so late responses for an old view get ignored. */
   let viewToken = 0;
   let observer = null;
@@ -257,8 +271,10 @@ export function createGallery({ api, root }) {
     try {
       await api.deletePost(post);
       toast('Post deleted.');
-      if (window.location.hash === '#/today') showToday();
-      else window.location.hash = '#/today';
+      const home = post.daily_date ? '#/today' : '#/unlimiteds';
+      if (window.location.hash !== home) window.location.hash = home;
+      else if (post.daily_date) showToday();
+      else showUnlimiteds();
     } catch {
       toast("Couldn't delete that post. Try again in a moment.");
     }
@@ -301,7 +317,7 @@ export function createGallery({ api, root }) {
       width: large ? IMAGE_SIZE : THUMB_SIZE,
       height: large ? IMAGE_SIZE : THUMB_SIZE,
     });
-    const path = dailyPath(post.daily_date, post.gen_version);
+    const path = postPath(post);
     // The art is transparent, so the right cell can stack it over the blob. The blob toggle
     // hides the left cell and the blob under the art, leaving just the drawing.
     return el(
@@ -313,9 +329,10 @@ export function createGallery({ api, root }) {
   }
 
   function card(post, { showDate }) {
-    const when = showDate
-      ? `Splotch #${challengeNumber(post.daily_date)}, ${formatDate(post.daily_date)}`
-      : new Date(post.created_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    let when;
+    if (!post.daily_date) when = postedOn(post);
+    else if (showDate) when = `Splotch #${challengeNumber(post.daily_date)}, ${formatDate(post.daily_date)}`;
+    else when = new Date(post.created_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
     return el(
       'article',
       { class: 'card', 'data-post': post.id },
@@ -491,6 +508,40 @@ export function createGallery({ api, root }) {
     });
   }
 
+  let unlimitedSort = 'new';
+  function showUnlimiteds() {
+    const grid = el('div', {});
+    const drawButton = () => el('button', { type: 'button', class: 'button primary', onclick: openFreePlay }, 'Draw in free play');
+    root.replaceChildren(
+      el(
+        'div',
+        { class: 'view-head' },
+        el(
+          'div',
+          {},
+          el('h1', {}, 'Unlimiteds'),
+          el('p', { class: 'muted' }, "Free play drawings, each on its own blob. They stay separate from Today and All-Time."),
+        ),
+        el('div', { class: 'row' }, drawButton(), blobToggle(), chips([['new', 'New'], ['top', 'Top']], unlimitedSort, (sort) => {
+          unlimitedSort = sort;
+          showUnlimiteds();
+        })),
+      ),
+      grid,
+    );
+    runGrid(grid, {
+      query: { sort: unlimitedSort, unlimited: true },
+      showDate: true,
+      emptyState: () => el(
+        'div',
+        { class: 'empty' },
+        el('h2', {}, 'Nobody has posted yet'),
+        el('p', {}, 'Draw on any free play blob and post it here.'),
+        drawButton(),
+      ),
+    });
+  }
+
   async function showPost(id) {
     const token = ++viewToken;
     observer?.disconnect();
@@ -527,7 +578,9 @@ export function createGallery({ api, root }) {
             'div',
             {},
             el('h1', {}, nameOf(post)),
-            el('p', { class: 'muted' }, `Splotch #${challengeNumber(post.daily_date)}, ${formatDate(post.daily_date)}`),
+            el('p', { class: 'muted' }, post.daily_date
+              ? `Splotch #${challengeNumber(post.daily_date)}, ${formatDate(post.daily_date)}`
+              : `Unlimited, ${postedOn(post)}`),
           ),
           el('div', { class: 'row' }, blobToggle(), likeButton(post), moreMenu(post)),
         ),
@@ -547,10 +600,12 @@ export function createGallery({ api, root }) {
       toast('The gallery is offline right now. You can still save your art to Mine.');
       return;
     }
-    if (daysBetween(payload.dailyDate, localDateString()) !== 0) {
+    const unlimited = payload.dailyDate === null;
+    if (!unlimited && daysBetween(payload.dailyDate, localDateString()) !== 0) {
       toast('That blob has expired. Only today\'s blob can be posted.');
       return;
     }
+    const galleryName = unlimited ? 'Unlimiteds' : "today's gallery";
     // What's uploaded is the drawing alone, on transparent. This preview shows it as viewers
     // will first see it: on top of the blob.
     const preview = renderPanel(payload, THUMB_SIZE, { blob: true });
@@ -584,6 +639,7 @@ export function createGallery({ api, root }) {
             existingName = name;
             await api.createPost({
               dailyDate: payload.dailyDate,
+              ...(unlimited ? { seed: payload.seed, params: payload.params } : {}),
               genVersion: payload.genVersion,
               transform: payload.transform,
               blobStyle: payload.blobStyle,
@@ -591,8 +647,8 @@ export function createGallery({ api, root }) {
               thumb,
             });
             close();
-            toast("You're in today's gallery!");
-            window.location.hash = '#/today';
+            toast(`You're in ${galleryName}!`);
+            window.location.hash = unlimited ? '#/unlimiteds' : '#/today';
           } catch (err) {
             console.warn('Splotchle post:', err);
             submit.disabled = false;
@@ -601,6 +657,8 @@ export function createGallery({ api, root }) {
               error.textContent = "You've already posted today. To post again, delete your old post from the gallery first.";
             } else if (err.code === '23514') {
               error.textContent = "That name isn't allowed. Try a different one.";
+            } else if (err.code === 'P0429') {
+              error.textContent = "You've posted a lot to Unlimiteds lately. Try again later, or delete an older post to make room.";
             } else if (err.code === 'anonymous_provider_disabled') {
               // See step 2 of supabase/README.md: "Allow anonymous sign-ins" in the dashboard.
               error.textContent = 'Gallery sign-in is switched off right now, so nothing can be posted. Your drawing is still safe here.';
@@ -613,7 +671,7 @@ export function createGallery({ api, root }) {
         },
       }, 'Post it');
       return [
-        el('h2', {}, "Post to today's gallery?"),
+        el('h2', {}, `Post to ${galleryName}?`),
         preview,
         el('p', { class: 'notice' }, 'In the gallery, your art appears next to the blob, and viewers can switch blobs off to see just your drawing.'),
         el('label', { class: 'field' }, 'Posting as', nameInput),
@@ -622,7 +680,9 @@ export function createGallery({ api, root }) {
           { class: 'notice' },
           'Be kind. No NSFW, nothing hateful, no personal info. ',
           el('a', { href: '#/rules', onclick: () => close() }, 'Community rules'),
-          '. You get one post per day, and anyone can see it.',
+          unlimited
+            ? '. Post as many as you like, up to 20 a day, and anyone can see them.'
+            : '. You get one post per day, and anyone can see it.',
         ),
         error,
         el(
@@ -632,7 +692,7 @@ export function createGallery({ api, root }) {
           submit,
         ),
       ];
-    }, { label: "Post to today's gallery" });
+    }, { label: `Post to ${galleryName}` });
   }
 
   // Refresh visible like counts when the tab regains focus. Live updates aren't needed.
@@ -656,6 +716,7 @@ export function createGallery({ api, root }) {
   return {
     showToday,
     showAllTime,
+    showUnlimiteds,
     showPost,
     openPostDialog,
   };

@@ -1,6 +1,6 @@
 // Hash routes. They survive refreshes and need no 404 tricks on GitHub Pages.
 
-const ROUTES = ['draw', 'today', 'all-time', 'mine', 'rules'];
+const ROUTES = ['draw', 'today', 'all-time', 'unlimiteds', 'mine', 'rules'];
 
 /**
  * @typedef {object} Route

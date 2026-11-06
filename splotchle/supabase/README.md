@@ -1,6 +1,6 @@
 # Setting up the Splotchle gallery on Supabase
 
-The app works without any of this. Until `js/config.js` is filled in, the Today and All-Time tabs show a friendly offline state, and drawing, saving and streaks work as normal.
+The app works without any of this. Until `js/config.js` is filled in, the Today, All-Time and Unlimiteds tabs show a friendly offline state, and drawing, saving and streaks work as normal.
 
 Make two projects, one for production and one for development, and repeat these steps for each. Testing should never touch production data.
 
@@ -30,6 +30,9 @@ const { data: { user } } = await db.auth.signInAnonymously();
 | Liking your own post | `insert` into `likes` with your own post's id |
 | Posting as someone else | `insert` into `posts` with another `user_id` |
 | Posting for a far-off date | `insert` into `posts` with `daily_date: '2020-01-01'` |
+| Posting without a date or a blob | `insert` into `posts` with `daily_date: null` and no `seed` or `params` |
+| Mixing the two kinds of post | `insert` into `posts` with both a `daily_date` and a `seed` |
+| Flooding Unlimiteds | `insert` a 21st unlimited post within a day |
 | Faking your like count on insert | `insert` into `posts` with `like_count: 999` |
 | Editing a counter | `db.from('posts').update({ like_count: 999 }).eq('id', id)` |
 | Unhiding a post | `db.from('posts').update({ hidden: false }).eq('id', id)` |
@@ -43,6 +46,8 @@ An update that's blocked by RLS can return no error and change zero rows, so rea
 ## How it behaves
 
 **One post per day, and re-posting means deleting first.** There's a unique constraint on `(user_id, daily_date)`. Replacing an image while keeping its likes would let someone collect likes on one drawing and then swap in another, so deleting a post also deletes its likes.
+
+**Unlimiteds.** A free play post has `daily_date` set to null and stores the `seed` and `params` that rebuild its blob, so it never appears in Today or All-Time. Each user can have 20 from the past day and post 5 a minute, set in `posts_before_insert`. Only posts that still exist count toward the 20. Likes, reports and hiding work the same as for daily posts.
 
 **Reports.** Three reports set `hidden = true`. To review hidden posts, open **Table Editor → posts** and filter on `hidden = true`. Set `hidden` back to `false` and `report_count` to `0` to restore a post, or delete the row to remove it. Deleting a row in the dashboard leaves its image files behind, so remove the post's folder from **Storage → posts** too.
 

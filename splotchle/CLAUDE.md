@@ -47,8 +47,8 @@ splotchle/
 │   ├── share.js        # Encode/decode blob params in the URL
 │   ├── config.js       # Supabase URL + anon key (public values only)
 │   ├── api.js          # All Supabase calls: auth, posts, likes, reports, storage
-│   ├── gallery.js      # Today / All-time gallery views, infinite scroll
-│   ├── router.js       # Hash routes: #/draw, #/today, #/all-time, #/mine, #/post/:id
+│   ├── gallery.js      # Today / All-time / Unlimiteds gallery views, infinite scroll
+│   ├── router.js       # Hash routes: #/draw, #/today, #/all-time, #/unlimiteds, #/mine, #/post/:id
 │   └── ui.js           # Shared DOM helpers: elements, icons, toasts, dialogs
 ├── assets/
 │   ├── icons/          # sprite.svg, one symbol per UI icon
@@ -179,12 +179,13 @@ The stage is a fixed-aspect artboard (default 1024×1024 logical units, scaled t
 ## 8b. Public gallery (Supabase)
 
 ### Navigation
-- A tab bar sits at the top of the screen: **Draw · Today · All-Time**, plus a smaller **Mine** link for the person's own local gallery. Tabs use hash routes (`router.js`), so they survive refreshes and links can be shared. Hash routes also work on GitHub Pages without any 404 tricks.
+- A tab bar sits at the top of the screen: **Draw · Today · All-Time · Unlimiteds**, plus a smaller **Mine** link for the person's own local gallery. Tabs use hash routes (`router.js`), so they survive refreshes and links can be shared. Hash routes also work on GitHub Pages without any 404 tricks.
 - **Today**: posts for today's daily blob. The blob is shown large at the top and the posts in a grid below. Sort by **New** (default) or **Top**.
 - **All-Time**: the most-liked posts across every day, ranked by like count (ties go to the earlier post), with the date and "Splotch #N" on each card. Allow filters for This week, This month and All time.
-- **Blob toggle**: Today, All-Time and post pages have a "Blobs on / off" switch, remembered in localStorage. On, the card shows the blob and the art layered on that blob. Off, it shows only the drawing, as one square per card.
+- **Unlimiteds**: free play posts, sorted by **New** (default) or **Top**. They have no `daily_date` and never appear in Today or All-Time.
+- **Blob toggle**: Today, All-Time, Unlimiteds and post pages have a "Blobs on / off" switch, remembered in localStorage. On, the card shows the blob and the art layered on that blob. Off, it shows only the drawing, as one square per card.
 - **Card layout**: the blob on the left and the artwork on the right, both the same size, with the poster's display name, the like button and count, and a ⋯ menu (Report, Copy link) below. On narrow screens the card can stack, or show a toggle/slider between blob and art. Clicking a card opens `#/post/:id` as a larger view.
-- The blob on a card is **not stored as an image**. It is regenerated on the client from the post's `daily_date` seed, `gen_version` and `transform`, which also proves which blob the art was drawn on. Cache generated paths per date in memory.
+- The blob on a card is **not stored as an image**. It is regenerated on the client from the post's `daily_date` seed (or its own `seed` and `params` for an unlimited post), `gen_version` and `transform`, which also proves which blob the art was drawn on. Cache generated paths in memory.
 - Load posts in pages of 24 using keyset pagination (cursor on `like_count, created_at, id` or `created_at, id`), lazy-load thumbnails with `loading="lazy"`, and show skeleton cards while loading.
 
 ### Identity
@@ -193,21 +194,22 @@ The stage is a fixed-aspect artboard (default 1024×1024 logical units, scaled t
 - Later (optional): link an email or OAuth account so people keep their posts across devices.
 
 ### Posting
-- **Only the daily blob can be posted**, and only on its date. The server accepts `daily_date` within ±1 day of the server's UTC date to allow for time zones. Free-play blobs stay in the personal gallery.
-- **One post per user per daily date**, enforced with a unique constraint. Re-posting requires deleting first (see `supabase/README.md` for why).
+- **The daily blob can be posted to Today only on its date.** The server accepts `daily_date` within ±1 day of the server's UTC date to allow for time zones.
+- **One daily post per user per date**, enforced with a unique constraint. Re-posting requires deleting first (see `supabase/README.md` for why).
+- **Free play blobs can be posted to Unlimiteds**, with `daily_date` null. A trigger caps each user at 20 in the past day and 5 a minute.
 - Flow: the artist clicks "Post to today's gallery" and sees a confirmation step showing the preview, the display name and a short rules notice. The client uploads to Storage and then inserts the `posts` row. If the insert fails, delete the uploaded file.
-- Upload a **transparent artwork-only WebP** (just the drawing, no paper or blob, so the page can layer it over the blob or show it alone) at max 1024 px and ≤ 400 KB, plus a 384 px thumbnail. The bucket enforces a file size limit and the `image/webp` / `image/png` MIME types. Storage path: `posts/{user_id}/{daily_date}/{uuid}.webp`.
+- Upload a **transparent artwork-only WebP** (just the drawing, no paper or blob, so the page can layer it over the blob or show it alone) at max 1024 px and ≤ 400 KB, plus a 384 px thumbnail. The bucket enforces a file size limit and the `image/webp` / `image/png` MIME types. Storage path: `posts/{user_id}/{daily_date}/{uuid}.webp`, using the current UTC date for unlimited posts.
 - Users can delete their own posts, which also removes the images.
 
 ### Schema (`supabase/schema.sql`)
 - `profiles(user_id uuid pk → auth.users, display_name text, created_at)`
-- `posts(id uuid pk, user_id uuid → auth.users, daily_date date, gen_version int, transform jsonb, blob_style jsonb, image_path text, thumb_path text, like_count int default 0, report_count int default 0, hidden bool default false, created_at timestamptz default now())`, with `unique(user_id, daily_date)` and indexes on `(daily_date, created_at desc)`, `(daily_date, like_count desc)` and `(like_count desc, created_at)`.
+- `posts(id uuid pk, user_id uuid → auth.users, daily_date date, seed text, params jsonb, gen_version int, transform jsonb, blob_style jsonb, image_path text, thumb_path text, like_count int default 0, report_count int default 0, hidden bool default false, created_at timestamptz default now())`, with `unique(user_id, daily_date)` and indexes on `(daily_date, created_at desc)`, `(daily_date, like_count desc)` and `(like_count desc, created_at)`.
 - `likes(post_id → posts on delete cascade, user_id, created_at, primary key(post_id, user_id))`. A trigger keeps `posts.like_count` up to date. Clients never write `like_count` directly.
 - `reports(post_id, user_id, reason text, created_at, primary key(post_id, user_id))`. A trigger increments `report_count` and sets `hidden = true` at **3 reports**, and William reviews hidden posts in the Supabase dashboard.
 - Optionally a `top_posts` view or RPC for the all-time ranking with filters.
 
 ### Row Level Security (required on every table)
-- `posts`: anyone can `select` where `hidden = false`, and owners can also see their own hidden posts. `insert` only when `user_id = auth.uid()` and `daily_date` is within the allowed window. `delete` by the owner only. No client `update` of counters or `hidden`.
+- `posts`: anyone can `select` where `hidden = false`, and owners can also see their own hidden posts. `insert` only when `user_id = auth.uid()` and `daily_date` is within the allowed window or null. A check constraint requires `seed` and `params` on exactly the null-date posts. `delete` by the owner only. No client `update` of counters or `hidden`.
 - `likes`: `select` for all. `insert`/`delete` only for your own `user_id`. You can't like your own post (enforced in the policy or the trigger).
 - `reports`: `insert` only for your own `user_id`. No `select` for clients.
 - `profiles`: public `select` of `display_name`, and `upsert` by the owner only.
@@ -265,7 +267,7 @@ The stage is a fixed-aspect artboard (default 1024×1024 logical units, scaled t
 ## 12. Out of scope (for now)
 
 - Full accounts with passwords, comments and following other users.
-- Syncing the personal (local) gallery to the cloud. Only posted daily art goes to Supabase.
+- Syncing the personal (local) gallery to the cloud. Only posted art goes to Supabase.
 - Automated image moderation (could be added later through a Supabase Edge Function).
 - AI-generated character suggestions.
 - Layers in the drawing tool beyond the single drawing canvas plus the uploaded image.

@@ -114,7 +114,7 @@ export function createStudio({ onPost }) {
       $('challenge-sub').textContent = `${formatDate(state.dailyDate)}. New blob at midnight.`;
     } else {
       $('challenge-title').textContent = state.title || 'Free play';
-      $('challenge-sub').textContent = 'Just for fun. Free play blobs stay in your own gallery.';
+      $('challenge-sub').textContent = 'Just for fun. Save it to Mine, or post it to Unlimiteds.';
     }
     const days = currentStreak(streak, today);
     $('streak').hidden = days === 0;
@@ -162,7 +162,9 @@ export function createStudio({ onPost }) {
     $('save').disabled = !layer.hasArt;
     $('save').textContent = state.artworkId && !state.dirty ? 'Saved' : 'Save';
     $('export').disabled = false;
-    $('post').hidden = state.dailyDate !== today;
+    // A daily left open past midnight has a date but can't be posted, so it stays hidden.
+    $('post').hidden = isDaily && state.dailyDate !== today;
+    $('post').textContent = isDaily ? "Post to today's gallery" : 'Post to Unlimiteds';
     $('post').disabled = !layer.hasArt;
 
     $('past-date').min = LAUNCH_DATE;
@@ -687,6 +689,8 @@ export function createStudio({ onPost }) {
     $('post').addEventListener('click', () => {
       onPost({
         dailyDate: state.dailyDate,
+        seed: state.seed,
+        params: state.params,
         genVersion: state.genVersion,
         transform: state.transform,
         blobStyle: state.blobStyle,
@@ -881,9 +885,16 @@ export function createStudio({ onPost }) {
     else await openDaily();
   }
 
+  /** Goes to the drawing view on a free play blob, keeping any free play work in progress. */
+  async function openFreePlay() {
+    if (state.mode !== 'free') await switchMode('free');
+    window.location.hash = '#/draw';
+  }
+
   return {
     ready: boot(),
     openArtwork,
+    openFreePlay,
     setActive(value) {
       active = value;
       if (!value) flushAutosave();

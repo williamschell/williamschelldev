@@ -316,3 +316,73 @@ create policy posts_files_delete on storage.objects
     bucket_id = 'posts'
     and (storage.foldername(name))[1] = auth.uid()::text
   );
+
+-- ---------------------------------------------------------------------------
+-- 2026-11-05: Unlimiteds, a separate gallery for free play blobs
+-- ---------------------------------------------------------------------------
+
+-- An unlimited post has no daily_date, and carries the seed and params that rebuild its blob.
+-- A null date never collides in unique (user_id, daily_date), so there can be many per user,
+-- and it never matches the Today or All-Time queries. Likes and reports work unchanged.
+alter table public.posts
+  alter column daily_date drop not null,
+  add column seed text check (char_length(seed) between 1 and 80),
+  add column params jsonb check (jsonb_typeof(params) = 'object' and pg_column_size(params) < 1024),
+  add constraint posts_daily_or_unlimited check (
+    (daily_date is not null and seed is null and params is null)
+    or (daily_date is null and seed is not null and params is not null)
+  );
+
+create index posts_unlimited_new on public.posts (created_at desc, id desc) where daily_date is null;
+create index posts_unlimited_top on public.posts (like_count desc, created_at, id) where daily_date is null;
+
+grant insert (seed, params) on public.posts to authenticated;
+
+-- Daily posts keep exactly the old rule. Unlimited posts stay inside your own folder, and the
+-- storage policies above still limit uploads to a folder named for a current date.
+drop policy posts_insert on public.posts;
+create policy posts_insert on public.posts
+  for insert to authenticated with check (
+    user_id = auth.uid()
+    and (
+      (
+        daily_date between (now() at time zone 'utc')::date - 1 and (now() at time zone 'utc')::date + 1
+        and image_path like auth.uid()::text || '/' || daily_date::text || '/%'
+        and thumb_path like auth.uid()::text || '/' || daily_date::text || '/%'
+      )
+      or (
+        daily_date is null
+        and image_path like auth.uid()::text || '/%'
+        and thumb_path like auth.uid()::text || '/%'
+      )
+    )
+  );
+
+-- The one-a-day rule doesn't apply here, so this is what stops anyone filling up storage.
+-- It counts posts that still exist, so deleting one makes room for another.
+create function public.posts_before_insert()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.daily_date is null then
+    perform public.check_rate('unlimited-post', 5);
+    if (
+      select count(*) from public.posts
+      where user_id = new.user_id
+        and daily_date is null
+        and created_at > now() - interval '1 day'
+    ) >= 20 then
+      raise exception 'Too many Unlimiteds posts today' using errcode = 'P0429';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+create trigger posts_limit before insert on public.posts
+  for each row execute function public.posts_before_insert();
+
+revoke execute on function public.posts_before_insert() from public, anon, authenticated;

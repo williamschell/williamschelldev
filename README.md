@@ -5,7 +5,7 @@ A static portfolio site. It has no build step and no framework: just HTML, CSS a
 ```
 index.html        page shell (rarely edited)
 css/style.css     all styling; colors and fonts are at the top under :root
-js/projects.js    ← ALL YOUR CONTENT: name, bio, socials, and the project list
+js/projects.js    ← ALL YOUR CONTENT: name, bio, socials, and the game and software lists
 js/site.js        renders the grid and project pages (no need to edit)
 images/           put project images here, one folder per project
 CNAME             tells GitHub Pages to serve this at williamschell.dev
@@ -19,6 +19,10 @@ CNAME             tells GitHub Pages to serve this at williamschell.dev
 4. Commit and push. The project gets a cover on the homepage and its own page at `williamschell.dev/#<slug>`.
 
 To hide a project without deleting it, add `hidden: true`.
+
+## Adding software
+
+The same steps, but add the entry to the `window.SOFTWARE` list in `js/projects.js`. It appears on the Software page at `williamschell.dev/#software`, and its own page is at `williamschell.dev/#<slug>`. To link to an app hosted in this repo, use a relative URL like `splotchle/`. Entries can also have a one-line `summary` for the card.
 
 ## Previewing locally
 

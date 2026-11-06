@@ -45,12 +45,16 @@ const views = {
   rules: document.getElementById('view-rules'),
 };
 
-const gallery = createGallery({ api, root: views.gallery });
+const gallery = createGallery({
+  api,
+  root: views.gallery,
+  openFreePlay: () => studio.openFreePlay(),
+});
 const studio = createStudio({ onPost: (payload) => gallery.openPostDialog(payload) });
 const mine = createMine({ root: views.mine, openInStudio: (record) => studio.openArtwork(record) });
 
 const VIEW_FOR_ROUTE = {
-  draw: 'draw', today: 'gallery', 'all-time': 'gallery', post: 'gallery', mine: 'mine', rules: 'rules',
+  draw: 'draw', today: 'gallery', 'all-time': 'gallery', unlimiteds: 'gallery', post: 'gallery', mine: 'mine', rules: 'rules',
 };
 
 function showRoute(route) {
@@ -59,12 +63,17 @@ function showRoute(route) {
   for (const tab of document.querySelectorAll('.tab')) {
     const current = tab.dataset.route === route.name;
     tab.classList.toggle('active', current);
-    if (current) tab.setAttribute('aria-current', 'page');
-    else tab.removeAttribute('aria-current');
+    if (current) {
+      tab.setAttribute('aria-current', 'page');
+      tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    } else {
+      tab.removeAttribute('aria-current');
+    }
   }
   studio.setActive(active === 'draw');
   if (route.name === 'today') gallery.showToday();
   else if (route.name === 'all-time') gallery.showAllTime();
+  else if (route.name === 'unlimiteds') gallery.showUnlimiteds();
   else if (route.name === 'post') gallery.showPost(route.params.id);
   else if (route.name === 'mine') mine.show();
   window.scrollTo(0, 0);

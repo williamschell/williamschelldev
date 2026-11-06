@@ -2,7 +2,10 @@
    You shouldn't need to edit this file to add projects. */
 (function () {
   const SITE = window.SITE || {};
-  const PROJECTS = (window.PROJECTS || []).filter(p => !p.hidden);
+  const visible = list => (list || []).filter(p => !p.hidden);
+  const GAMES = visible(window.PROJECTS);
+  const SOFTWARE = visible(window.SOFTWARE);
+  const SOFTWARE_HASH = "software";
   const app = document.getElementById("app");
 
   const ICONS = {
@@ -47,12 +50,13 @@
       if (location.hash) location.hash = ""; else render();
       document.body.classList.remove("nav-open");
     }));
+    document.querySelector(".nav-software").addEventListener("click", () => document.body.classList.remove("nav-open"));
   }
 
-  /* ---------- homepage ---------- */
-  function renderHome() {
-    document.title = SITE.name || "Portfolio";
-    const covers = PROJECTS.map(p => {
+  /* ---------- project grid (Games and Software share this layout) ---------- */
+  function renderGrid(projects, pageTitle) {
+    document.title = pageTitle ? `${pageTitle} — ${SITE.name || ""}` : SITE.name || "Portfolio";
+    const covers = projects.map(p => {
       const normal = p.cover ? img(p.cover) : placeholder(p, false);
       const hover = p.hoverCover ? img(p.hoverCover) : (p.cover ? "" : placeholder(p, true));
       return `
@@ -63,6 +67,7 @@
         </div>
         <div class="details">
           <div class="title">${esc(p.title)}</div>
+          ${p.summary ? `<div class="meta">${esc(p.summary)}</div>` : ""}
           ${p.teamSize ? `<div class="meta">Team Size: ${esc(p.teamSize)}</div>` : ""}
           ${p.roles ? `<div class="meta">Roles: ${esc(p.roles)}</div>` : ""}
           ${p.dates ? `<div class="meta">${esc(p.dates)}</div>` : ""}
@@ -93,11 +98,11 @@
     }
   }
 
-  function renderProject(p) {
+  function renderProject(p, projects, gridHash) {
     document.title = `${p.title} — ${SITE.name || ""}`;
-    const i = PROJECTS.indexOf(p);
-    const prev = PROJECTS[(i - 1 + PROJECTS.length) % PROJECTS.length];
-    const next = PROJECTS[(i + 1) % PROJECTS.length];
+    const i = projects.indexOf(p);
+    const prev = projects[(i - 1 + projects.length) % projects.length];
+    const next = projects[(i + 1) % projects.length];
     const meta = [
       p.teamSize && `Team Size: ${esc(p.teamSize)}`,
       p.roles && `Roles: ${esc(p.roles)}`,
@@ -114,21 +119,29 @@
           ${links ? `<div class="project-links">${links}</div>` : ""}
         </header>
         <div class="project-blocks">${(p.blocks || []).map(block).join("")}</div>
-        ${PROJECTS.length > 1 ? `
+        ${projects.length > 1 ? `
         <nav class="project-nav">
           <a href="#${esc(prev.slug)}">&larr; ${esc(prev.title)}</a>
           <a href="#" data-home-inline>All Projects</a>
           <a href="#${esc(next.slug)}">${esc(next.title)} &rarr;</a>
         </nav>` : ""}
       </article>`;
-    app.querySelector("[data-home-inline]")?.addEventListener("click", e => { e.preventDefault(); location.hash = ""; });
+    app.querySelector("[data-home-inline]")?.addEventListener("click", e => { e.preventDefault(); location.hash = gridHash; });
   }
 
   function render() {
     const slug = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
-    const p = slug && PROJECTS.find(x => x.slug === slug);
-    if (p) renderProject(p); else renderHome();
-    document.querySelector(".nav-games").classList.toggle("active", !p);
+    const onSoftwareGrid = slug === SOFTWARE_HASH;
+    const game = slug && GAMES.find(x => x.slug === slug);
+    const software = slug && SOFTWARE.find(x => x.slug === slug);
+
+    if (game) renderProject(game, GAMES, "");
+    else if (software) renderProject(software, SOFTWARE, SOFTWARE_HASH);
+    else if (onSoftwareGrid) renderGrid(SOFTWARE, "Software");
+    else renderGrid(GAMES);
+
+    document.querySelector(".nav-games").classList.toggle("active", !game && !software && !onSoftwareGrid);
+    document.querySelector(".nav-software").classList.toggle("active", onSoftwareGrid);
     window.scrollTo(0, 0);
   }
 
