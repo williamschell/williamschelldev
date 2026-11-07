@@ -1,0 +1,158 @@
+# CLAUDE.md — Streakle (game tracker)
+
+Streakle is a tracker for daily web games like Wordle and Splotchle. You keep a list of the games you play, jump to each one from a single page, log your result, keep streaks, and compare scores with friends and other players. It lives at **https://williamschell.dev/gametracker/** as a folder inside the GitHub Pages repo for williamschell.dev, with Supabase as the only backend.
+
+"Streakle" is a working name. It only appears in `index.html`, `index.js` and this file, so it's cheap to change. Storage keys say `gametracker` so a rename never orphans anyone's data.
+
+Read this file before making changes. If something here conflicts with a direct instruction from William, follow William and suggest updating this file.
+
+---
+
+## 1. Hard constraints
+
+The same as Splotchle and Novle, because the hosting is the same.
+
+- **No build step.** Plain HTML, CSS and native ES modules. No bundler, TypeScript, JSX, Sass or required `package.json`.
+- **No runtime npm dependencies.** The one exception is `vendor/supabase.js`, a pinned copy of `@supabase/supabase-js` 2.119.0 (MIT), loaded on demand by `api.js`.
+- **Relative paths only.** The app is served from `/gametracker/`. Never hard-code `williamschell.dev` except in meta tags.
+- **Supabase is the only backend.** All security comes from Row Level Security and database constraints, never client code. Never commit the `service_role` key.
+- **Local first.** The list, logging and streaks must keep working if Supabase is down or not set up. Nothing is uploaded until the person chooses to start comparing.
+- **Its own Supabase project and its own copies of shared helpers.** Never point `js/config.js` at Splotchle's or Novle's project, and never import from `../splotchle/`.
+- **Static and fast.** First load well under 200 KB. No analytics or trackers. Don't start file names with `_` (Jekyll ignores them).
+
+## 2. Folder layout
+
+```
+gametracker/
+├── index.html          # App shell
+├── index.js            # Entry point: routes, theme, refreshing on focus and at midnight
+├── css/styles.css
+├── js/
+│   ├── dates.js        # Local dates and day arithmetic (pure)
+│   ├── streaks.js      # Streak math (pure)
+│   ├── scores.js       # Formatting, comparing, ranking and validating scores (pure)
+│   ├── catalog.js      # The built-in games and the rules for custom games (pure)
+│   ├── parse.js        # Reads pasted share text into a result (pure)
+│   ├── external.js     # Reads Splotchle's and Novle's streaks from this origin (§5)
+│   ├── store.js        # The game list and results, in IndexedDB and localStorage, plus sync
+│   ├── backend.js      # Picks the real backend or the demo one
+│   ├── api.js          # All Supabase calls
+│   ├── demo.js         # A fake backend with made-up players, for ?demo
+│   ├── config.js       # Supabase URL + anon key (public values only)
+│   ├── router.js       # Hash routes
+│   ├── ui.js           # Element builder, icons, toasts, dialogs
+│   └── views/          # today, compare, streaks, friends, games
+├── assets/             # favicon.svg, icons/sprite.svg
+├── vendor/supabase.js
+├── supabase/           # schema.sql and setup README
+└── tests/
+    ├── index.html      # In-browser tests for the pure modules
+    ├── tests.js
+    ├── schema.mjs      # Loads schema.sql into PGlite with a stand-in for Supabase's auth
+    └── e2e.mjs         # Drives the real app and the real SQL in Chrome (§9)
+```
+
+`dates`, `streaks`, `scores`, `catalog` and `parse` must stay **pure**: no DOM, no storage and no network.
+
+## 3. Features
+
+- **Today** (`#/today`): every game on your list with a Play link, your result, your streak and how you stand against friends. A box takes pasted share text and works out the game and score by itself. You can step back through earlier days to log something you missed.
+- **Compare** (`#/compare`): a ranked board for one game on one day, for Friends or Everyone.
+- **Streaks** (`#/streaks`): your overall streak, plus current, best, total and a 12-week calendar for each game.
+- **Friends** (`#/friends`): choose to start comparing, set a name, share a friend code or link, add and remove friends, opt out of Everyone, delete your data. `#/add/CODE` opens this view with the code filled in.
+- **Games** (`#/games`): add and remove games, reorder them, add custom games, and back up or restore everything as a JSON file.
+
+**Splotchle is on everyone's list by default.** It can still be removed like any other game and added back.
+
+## 4. Scores
+
+Every game has a `kind`, and a result is `{ score, failed }`:
+
+| kind | better | example | notes |
+|---|---|---|---|
+| `guesses` | lower | `3/6`, `X/6` | has `max` |
+| `count` | lower | `2 mistakes` | has `unit` |
+| `time` | lower | `1:23` | seconds |
+| `points` | higher | `142`, `4/5 stars` | optional `max` and `unit` |
+| `done` | none | `Done` | `score` is null, everyone ties |
+
+Failed results rank below every finished one. Ties share a rank (1, 2, 2, 4). The same rule exists twice, in `rankRows` in `scores.js` and in `game_board` in `schema.sql`, and the e2e test checks they agree.
+
+To add a game, add it to `CATALOG` in `catalog.js`, and add a parser in `parse.js` if it has share text. Add a real sample to `tests/tests.js` too. **The parsers were written from known formats, so check each one against real share text when you can**, and treat a mismatch as a bug. Manual entry always works.
+
+Custom games get the id `c-<slug of name>`, so two people who add a game with the same name share a board. A custom game's URL never leaves the device, and only `http:` and `https:` URLs are accepted, so a link can't run script.
+
+## 5. Splotchle and Novle
+
+They share this origin, so `external.js` can read their localStorage: `splotchio:streak` and `novle:streak`, both `{ lastDate, current, best }`. When one says you played, it's logged automatically as a `done` result, and the streak shown is the higher of theirs and ours, since theirs may go back further.
+
+- **Read only.** Never write to their keys.
+- **Never open their IndexedDB databases.** Opening a database that doesn't exist creates it empty at version 1, so their upgrade code would never run and their app would break.
+- This only works on the same origin, so it won't work across different ports locally.
+
+## 6. Local data
+
+- IndexedDB database `gametracker`, store `results`, key `gameId|date`: `{ gameId, date, score, failed, source, updatedAt, synced, deleted }`. Everything is loaded into memory at startup.
+- localStorage, prefix `gametracker:`: `games` (ordered ids), `customGames`, `theme`.
+- `?demo` uses `gametracker-demo` and `gametracker-demo:` instead, so demo play never touches real data.
+- Storage failures show a toast and never throw.
+- Clearing a synced result leaves a `deleted` tombstone until the server has been told.
+
+Dates are the person's **local** date, Wordle-style. A result belongs to the day it was logged for, not to a puzzle number.
+
+## 7. Backend
+
+See `supabase/schema.sql` and `supabase/README.md`.
+
+- **Identity is an anonymous Supabase sign-in, per browser.** There's no signup screen, so **a phone and a laptop are two different players**, and clearing site data loses the account. Local history survives, and the JSON backup moves it. Linking an email is the obvious next step.
+- **Joining is explicit.** Nothing is sent until the person presses Start comparing, which sends the last 7 days. The server rejects dates older than that or more than a day ahead.
+- **Only numbers go to the server**: game id, date, score and failed. Share text and grids stay local, so a board can't spoil anyone's puzzle.
+- **Friends are mutual and code-based.** Having someone's code is the consent, so there's no search and no request inbox. Codes are private to their owner and can be changed, which invalidates old links but keeps existing friends.
+- **Scores are self-reported and can't be verified**, because the games are on other sites. Treat Everyone as for fun. The lever against cheaters is `profiles.banned`, set from the dashboard.
+- The client only uses RPCs. They're `security invoker` wherever possible, so RLS still applies inside them. `add_friend`, `rotate_friend_code` and the trigger functions are `security definer` with an empty search path.
+
+## 8. Demo mode
+
+`?demo` swaps in `js/demo.js`, a fake backend with made-up players, so the social views can be seen with no Supabase project. A banner always says the players aren't real. It's loaded on demand and adds nothing to the normal first load.
+
+## 9. Testing and local development
+
+Run from the repo root so the subpath matches production:
+
+```
+python -m http.server 8000
+# http://localhost:8000/gametracker/          local features only until DEVELOPMENT is set in config.js
+# http://localhost:8000/gametracker/?demo     with fake players
+# http://localhost:8000/gametracker/tests/    unit tests
+```
+
+`tests/e2e.mjs` needs Chrome plus two packages kept outside the repo:
+
+```
+npm install --prefix <somewhere> playwright-core @electric-sql/pglite
+$env:GT_TEST_DEPS = '<somewhere>'; node gametracker/tests/e2e.mjs
+```
+
+It runs the app with the real `api.js` and the real supabase-js against the real `schema.sql` in PGlite. A small shim stands in for Supabase's auth and PostgREST, including its roles, so RLS is really enforced. It's still not a real Supabase project, so try the forbidden actions in `supabase/README.md` on a development project too.
+
+## 10. Code style
+
+- ES2022, `const`/`let`, named exports only, JSDoc on public functions, 2-space indent, semicolons, single quotes.
+- Build DOM with `el()`, which never parses HTML, so names from other players are safe.
+- CSS: custom properties in `:root`, light and dark through `prefers-color-scheme` plus a manual toggle, mobile first.
+- **Palette**: blue and white in light mode, maroon and black in dark mode, with nearly square corners, matching Splotchle.
+- Every control works by keyboard with a visible focus ring, icon buttons have `aria-label`, color is never the only signal, and animation respects `prefers-reduced-motion`.
+
+## 11. Out of scope (for now)
+
+- Reading scores from other sites automatically. Browsers don't allow it, and these games don't offer APIs. A browser extension is the only real route.
+- Accounts across devices, push notifications and reminders.
+- Group leaderboards beyond one friend list, and all-time rankings.
+- Chat, comments and reactions. Names are the only text any player can show another.
+
+## 12. Working agreements for Claude
+
+- Stay inside `gametracker/`. Linking it from the homepage (`js/projects.js`) should be confirmed first. Splotchle and Novle are only ever read from, never edited, for this project.
+- Every schema or policy change goes into `supabase/schema.sql` as a dated migration at the bottom. Never weaken an RLS policy to make a feature work.
+- Don't add dependencies, a build step or another backend without asking.
+- Keep this file up to date when the architecture changes.

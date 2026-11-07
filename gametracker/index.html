@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Streakle: all your daily games in one place</title>
+<meta name="description" content="Track your daily games, keep your streaks, and compare scores with friends.">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#1550e0">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#6b0f1f">
+<meta property="og:title" content="Streakle">
+<meta property="og:description" content="Track your daily games, keep your streaks, and compare scores with friends.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://williamschell.dev/gametracker/">
+<link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./css/styles.css">
+<script>
+  // Set the theme before first paint so a saved choice doesn't flash the wrong colors.
+  try {
+    const prefix = new URLSearchParams(location.search).has('demo') ? 'gametracker-demo:' : 'gametracker:';
+    const theme = JSON.parse(localStorage.getItem(prefix + 'theme'));
+    if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+  } catch { /* no saved theme */ }
+</script>
+<script type="module" src="./index.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#/today" aria-label="Streakle, go to today">
+    <svg class="icon" aria-hidden="true"><use href="./assets/icons/sprite.svg#flame"/></svg>
+    <span class="brand-name">Streakle</span>
+  </a>
+  <nav class="tabs" aria-label="Main">
+    <a class="tab" data-route="today" href="#/today">Today</a>
+    <a class="tab" data-route="compare" href="#/compare">Compare</a>
+    <a class="tab" data-route="streaks" href="#/streaks">Streaks</a>
+    <a class="tab" data-route="friends" href="#/friends">Friends</a>
+    <a class="tab" data-route="games" href="#/games">Games</a>
+  </nav>
+  <div class="topbar-end">
+    <button id="theme-toggle" class="icon-button" type="button" aria-label="Switch color theme"></button>
+    <a class="back-link" href="../">williamschell.dev</a>
+  </div>
+</header>
+
+<p id="demo-banner" class="demo-banner" hidden>Demo mode: these players are made up, and nothing here touches your real data. <a href="./">Leave demo</a></p>
+
+<main id="view" class="view-host"></main>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
