@@ -1,15 +1,18 @@
 // The Today view: everything on your list for one day, with a way to log each result.
 
-import { getBackend } from '../backend.js';
+import { getBackend, isDemo } from '../backend.js';
 import { CATALOG, SUGGESTED_GAMES, catalogGame } from '../catalog.js';
+import { BACKEND_CONFIGURED } from '../config.js';
 import { localDateString } from '../dates.js';
 import { parseShare } from '../parse.js';
 import {
   cleanResult, formatScore, ordinal, parseTime, rankRows,
 } from '../scores.js';
 import {
-  addGame, clearResult, findGame, gameStreak, getResult, isOnList, logResult, myGames, overallStreak,
+  addGame, clearResult, findGame, gameStreak, getResult, isOnList, logResult, myGames, overallStreak, readSetting,
 } from '../store.js';
+
+const canSignIn = isDemo || BACKEND_CONFIGURED;
 import {
   el, externalLink, icon, toast,
 } from '../ui.js';
@@ -294,6 +297,10 @@ export function renderToday(host, ctx) {
           el('h2', {}, 'Your list is empty'),
           el('p', {}, el('a', { class: 'sticky-button', href: '#/games' }, icon('plus'), 'Choose some games'))),
       suggestions(redraw),
+      // Clearing the browser would lose everything, so say so once there's something to lose.
+      canSignIn && overall.lastDate && !readSetting('account', null)
+        ? el('p', { class: 'muted small' }, 'Your scores only live in this browser for now. ', el('a', { href: '#/account' }, 'Sign in or make an account'), ' to keep them safe.')
+        : null,
     ].filter(Boolean));
 
     if (focusSelector) host.querySelector(focusSelector)?.focus();

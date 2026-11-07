@@ -5,9 +5,9 @@
 import { addDays } from './dates.js';
 import { catalogGame } from './catalog.js';
 import { rankRows } from './scores.js';
-import { displayNameError, randomDisplayName } from './api.js';
+import { displayNameError, passwordError, usernameError } from './api.js';
 
-export { displayNameError, randomDisplayName };
+export { displayNameError, passwordError, usernameError };
 
 export const isConfigured = true;
 
@@ -18,7 +18,7 @@ const FRIENDS = ['Sample Sam', 'Example Alex', 'Pretend Priya'];
 const STRANGERS = ['Made Up Mo', 'Fictional Finn', 'Invented Ines', 'Placeholder Pat', 'Mock Mina', 'Dummy Dev'];
 const toId = (name) => `demo-${name.toLowerCase().replace(/ /g, '-')}`;
 
-const myResults = new Map();
+const savedResults = new Map();
 const wait = () => new Promise((resolve) => { setTimeout(resolve, 60); });
 
 function hash(text) {
@@ -64,16 +64,56 @@ function fakeStreak(name, game, date) {
   return streak;
 }
 
-export async function getAccount() {
+/** @returns {{ username: string }|null} */
+export function signedInAs() {
   const account = loadAccount();
-  return account ? { name: account.name, publicBoard: account.publicBoard, code: account.code } : null;
+  return account?.username ? { username: account.username } : null;
 }
 
-export async function join(name, publicBoard) {
+export async function isSignedIn() {
+  return signedInAs() !== null;
+}
+
+export async function getAccount() {
+  const account = loadAccount();
+  return account?.username ? {
+    username: account.username, name: account.name, publicBoard: account.publicBoard, code: account.code,
+  } : null;
+}
+
+// Any username and password work in the demo, and every account starts with the same friends.
+async function demoSignIn(username, publicBoard) {
   await wait();
+  const clean = username.trim().toLowerCase();
   saveAccount({
-    name, publicBoard, code: 'DE3040C0DE', friends: FRIENDS.map((n) => ({ user_id: toId(n), display_name: n })),
+    username: clean, name: clean, publicBoard, code: 'DE3040C0DE', friends: FRIENDS.map((n) => ({ user_id: toId(n), display_name: n })),
   });
+}
+
+export const signUp = (username, password, publicBoard) => demoSignIn(username, publicBoard);
+export const signIn = (username) => demoSignIn(username, true);
+
+export async function signOut() {
+  localStorage.removeItem(KEY);
+  savedResults.clear();
+}
+
+export async function changePassword() {
+  await wait();
+}
+
+export const deleteAccount = signOut;
+
+export async function myResults() {
+  return [];
+}
+
+export async function saveList() {
+  return new Date().toISOString();
+}
+
+export async function myList() {
+  return null;
 }
 
 export async function updateAccount(name, publicBoard) {
@@ -84,11 +124,6 @@ export async function rotateCode() {
   const code = Math.floor(Math.random() * 0xffffffffff).toString(16).toUpperCase().padStart(10, '0');
   saveAccount({ ...loadAccount(), code });
   return code;
-}
-
-export async function leave() {
-  localStorage.removeItem(KEY);
-  myResults.clear();
 }
 
 export async function addFriend(code) {
@@ -115,11 +150,10 @@ export async function listFriends() {
 }
 
 export async function saveResults(rows) {
-  for (const row of rows) myResults.set(`${row.gameId}|${row.date}`, row);
-}
-
-export async function deleteResult(gameId, date) {
-  myResults.delete(`${gameId}|${date}`);
+  for (const row of rows) {
+    if (row.deleted) savedResults.delete(`${row.gameId}|${row.date}`);
+    else savedResults.set(`${row.gameId}|${row.date}`, row);
+  }
 }
 
 /** Works for any game the player might view, including custom ones. */
@@ -136,7 +170,7 @@ export async function gameBoard({ game, date, scope }) {
   const rows = fakeRows(game, date, names).map((row) => ({
     ...row, is_me: false, is_friend: friends.includes(row.display_name), streak: fakeStreak(row.display_name, game, date),
   }));
-  const mine = myResults.get(`${game.id}|${date}`);
+  const mine = savedResults.get(`${game.id}|${date}`);
   if (account && mine) {
     rows.push({
       user_id: ME, display_name: account.name, score: mine.score, failed: mine.failed, is_me: true, is_friend: false, streak: 1,

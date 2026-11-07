@@ -229,6 +229,25 @@ button, input, select, textarea { font-family: inherit; }
 
 .back-link { font-size: 0.95rem; white-space: nowrap; }
 
+.account-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  max-width: 10em;
+  padding: 2px 10px;
+  background: rgb(255 255 255 / 12%);
+  border-radius: 999px;
+  text-decoration: none;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.account-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-link .icon { width: 18px; height: 18px; }
+.account-link:hover { background: rgb(255 255 255 / 22%); }
+.account-link[aria-current='page'] { background: var(--paper); color: var(--ink); }
+
 .demo-banner {
   max-width: 780px;
   margin: 0 auto;
@@ -283,6 +302,7 @@ button, input, select, textarea { font-family: inherit; }
 }
 
 .stack { display: flex; flex-direction: column; gap: 12px; }
+.stack > .button { align-self: flex-start; }
 
 /* Sections are just writing on the page, not boxes. */
 .card {
@@ -398,6 +418,7 @@ button, input, select, textarea { font-family: inherit; }
 }
 
 input[type='text'],
+input[type='password'],
 input[type='url'],
 input[type='number'],
 select,
@@ -768,6 +789,12 @@ input[type='checkbox'] { width: 18px; height: 18px; accent-color: var(--accent);
 
 .cell.future { border-color: transparent; }
 
+/* Account */
+
+.account-form { max-width: 360px; }
+.account-form .button { align-self: flex-start; }
+.username { font-weight: 400; font-size: 1.2em; padding: 0 3px; background: var(--highlight); }
+
 /* Friends */
 
 .friend-code {
@@ -841,6 +868,18 @@ input[type='checkbox'] { width: 18px; height: 18px; accent-color: var(--accent);
 
 .toast.show { opacity: 1; pointer-events: auto; transform: translate(-50%, 0) rotate(-1deg); }
 .toast .link-button { font-size: 1.1rem; }
+
+/* Small phones: the brand, account, theme and home link all share the first row. */
+@media (max-width: 400px) {
+  .topbar { padding-left: 8px; padding-right: 6px; column-gap: 4px; }
+  .brand { font-size: 1.3rem; gap: 4px; }
+  .brand .icon { width: 18px; height: 18px; }
+  .topbar-end { gap: 2px; }
+  .topbar .icon-button { width: 32px; }
+  .account-link { gap: 3px; padding: 2px 8px; font-size: 0.95rem; max-width: 7.5em; }
+  .account-link .icon { width: 15px; height: 15px; }
+  .back-link { font-size: 0.85rem; }
+}
 
 /* Wider screens */
 

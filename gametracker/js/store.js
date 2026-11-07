@@ -3,7 +3,7 @@
 // a full quota shows a message, and the app carries on for this visit.
 
 import { isDemo, getBackend } from './backend.js';
-import { daysBetween, isDateString, localDateString } from './dates.js';
+import { addDays, isDateString, localDateString } from './dates.js';
 import {
   catalogGame, DEFAULT_GAMES, isWebUrl, makeCustomGame,
 } from './catalog.js';
@@ -14,8 +14,13 @@ import { computeStreak, mergeExternalStreak } from './streaks.js';
 const DB_NAME = isDemo ? 'gametracker-demo' : 'gametracker';
 const PREFIX = isDemo ? 'gametracker-demo:' : 'gametracker:';
 const STORE = 'results';
-const SYNC_WINDOW_DAYS = 7;
 const BACKUP_APP = 'gametracker';
+// The server takes results from this date up to a day ahead, and this many per request.
+const OLDEST_DATE = '2015-01-01';
+const BATCH = 500;
+const PULL_LIMIT = 10000;
+// Checking the account for changes from other devices, at most this often.
+const PULL_EVERY_MS = 20000;
 const SAVE_FAILED = 'Couldn\'t save on this device. Private browsing or a full disk can cause this.';
 
 /** @type {Map<string, object>} every result by "gameId|date", including deleted tombstones */
@@ -61,6 +66,12 @@ export function writeSetting(key, value) {
   } catch {
     errorListener(SAVE_FAILED);
   }
+}
+
+function removeSetting(key) {
+  try {
+    localStorage.removeItem(PREFIX + key);
+  } catch { /* nothing to remove */ }
 }
 
 /* ---------------------------- IndexedDB ---------------------------- */
@@ -140,7 +151,33 @@ export function myGames() {
   return (Array.isArray(ids) ? ids : DEFAULT_GAMES).map(findGame).filter(Boolean);
 }
 
-const saveList = (games) => writeSetting('games', games.map((game) => game.id));
+/** The list has changed here, so the account's copy needs updating. */
+function listChanged() {
+  writeSetting('listDirty', true);
+}
+
+function saveList(games) {
+  writeSetting('games', games.map((game) => game.id));
+  listChanged();
+}
+
+const listSnapshot = () => ({ games: myGames().map((game) => game.id), customGames: customGames() });
+
+/**
+ * Replaces the list here with the account's. Custom games are rebuilt through the same rules
+ * as a typed one, so a bad link can't get in even from the server.
+ * @param {{ games: unknown, customGames: unknown }} remote
+ */
+function applyRemoteList(remote) {
+  const customs = [];
+  for (const entry of Array.isArray(remote.customGames) ? remote.customGames : []) {
+    const made = isWebUrl(entry?.url) ? makeCustomGame(entry) : { error: 'bad' };
+    if ('game' in made && !customs.some((game) => game.id === made.game.id)) customs.push(made.game);
+  }
+  writeSetting('customGames', customs);
+  const ids = Array.isArray(remote.games) ? remote.games.filter((id) => typeof id === 'string') : [];
+  writeSetting('games', [...new Set(ids)].filter((id) => findGame(id)));
+}
 
 /**
  * @param {string} id
@@ -187,6 +224,7 @@ export function addCustomGame(input) {
   if ('error' in made) return made.error;
   const others = customGames().filter((game) => game.id !== made.game.id);
   writeSetting('customGames', [...others, made.game]);
+  listChanged();
   addGame(made.game.id);
   changed();
   return null;
@@ -305,38 +343,48 @@ export function overallStreak(today = localDateString()) {
 
 /* ---------------------------- sync ---------------------------- */
 
+// When signed in, the account is the lasting copy and this device is a cache of it. Changes made
+// here are sent up, and changes from other devices are pulled down. A change made here that
+// hasn't gone up yet always beats what's on the server.
+
 let syncTimer = null;
 let syncing = null;
+let lastPull = 0;
+let remoteListener = () => {};
+
+/** @param {() => void} listener hears when another device's changes have arrived */
+export function onRemoteChange(listener) {
+  remoteListener = listener;
+}
 
 function scheduleSync() {
   clearTimeout(syncTimer);
   syncTimer = setTimeout(syncNow, 800);
 }
 
-async function pushPending() {
-  const backend = await getBackend();
-  if (!backend.isConfigured || !await backend.getAccount()) return;
+/** Whether the server will take this row. Anything else just stays on this device. */
+function pushable(row) {
+  return row.date >= OLDEST_DATE && row.date <= addDays(localDateString(), 1)
+    && /^[a-z0-9-]{1,40}$/.test(row.gameId);
+}
 
-  // The server refuses dates older than this, so anything older just stays on this device.
-  const today = localDateString();
-  const pending = [...results.values()].filter((row) => !row.synced
-    && daysBetween(row.date, today) <= SYNC_WINDOW_DAYS);
+/** @returns {number} results changed here that the account doesn't have yet */
+export function pendingCount() {
+  return [...results.values()].filter((row) => !row.synced && pushable(row)).length;
+}
 
-  const toDelete = pending.filter((row) => row.deleted);
-  for (const row of toDelete) {
-    await backend.deleteResult(row.gameId, row.date);
-    if (results.get(row.key)?.updatedAt === row.updatedAt) {
-      results.delete(row.key);
-      unpersist(row.key);
-    }
-  }
-
-  const toSave = pending.filter((row) => !row.deleted);
-  if (toSave.length > 0) {
-    await backend.saveResults(toSave);
-    for (const row of toSave) {
+async function pushResults(backend) {
+  const pending = [...results.values()].filter((row) => !row.synced && pushable(row));
+  for (let i = 0; i < pending.length; i += BATCH) {
+    const batch = pending.slice(i, i + BATCH);
+    await backend.saveResults(batch);
+    for (const row of batch) {
       // If it changed while the request was out, leave it marked for the next sync.
-      if (results.get(row.key)?.updatedAt === row.updatedAt) {
+      if (results.get(row.key)?.updatedAt !== row.updatedAt) continue;
+      if (row.deleted) {
+        results.delete(row.key);
+        unpersist(row.key);
+      } else {
         const done = { ...row, synced: true, everSynced: true };
         results.set(row.key, done);
         persist(done);
@@ -346,22 +394,105 @@ async function pushPending() {
 }
 
 /**
- * Sends anything the server hasn't seen. Does nothing until the person has joined. Failures
- * are quiet, because everything stays marked and the next sync tries again.
+ * Takes one result from the account.
+ * @returns {boolean} whether anything here changed
+ */
+function mergeRemote(remote) {
+  const gameId = remote?.game_id;
+  const date = String(remote?.play_date ?? '').slice(0, 10);
+  if (typeof gameId !== 'string' || !/^[a-z0-9-]{1,40}$/.test(gameId) || !isDateString(date)) return false;
+  const key = keyOf(gameId, date);
+  const local = results.get(key);
+  if (local && !local.synced) return false;
+
+  if (remote.deleted) {
+    if (!local) return false;
+    results.delete(key);
+    unpersist(key);
+    return true;
+  }
+  const score = Number.isInteger(remote.score) ? remote.score : null;
+  const failed = remote.failed === true;
+  if (local && local.score === score && local.failed === failed) return false;
+  const row = {
+    key, gameId, date, score, failed, source: local?.source ?? 'account', updatedAt: Date.now(), synced: true, deleted: false, everSynced: true,
+  };
+  results.set(key, row);
+  persist(row);
+  return true;
+}
+
+async function pullResults(backend) {
+  let since = readSetting('pulledAt', null);
+  let changedAny = false;
+  // Pages until it's caught up. The cap only matters if something is badly wrong.
+  for (let page = 0; page < 20; page += 1) {
+    const rows = await backend.myResults(since);
+    for (const row of rows) changedAny = mergeRemote(row) || changedAny;
+    const newest = rows.length > 0 ? rows[rows.length - 1].updated_at : since;
+    const advanced = newest !== since;
+    since = newest;
+    if (rows.length < PULL_LIMIT || !advanced) break;
+  }
+  writeSetting('pulledAt', since);
+  return changedAny;
+}
+
+/** @returns {Promise<boolean>} whether the list here changed */
+async function syncList(backend, pull) {
+  if (readSetting('listDirty', false)) {
+    const snapshot = listSnapshot();
+    const version = await backend.saveList(snapshot.games, snapshot.customGames);
+    if (JSON.stringify(listSnapshot()) === JSON.stringify(snapshot)) writeSetting('listDirty', false);
+    writeSetting('listVersion', version);
+    return false;
+  }
+  if (!pull) return false;
+  const remote = await backend.myList();
+  if (!remote || remote.version === readSetting('listVersion', null)) return false;
+  applyRemoteList(remote);
+  writeSetting('listVersion', remote.version);
+  return true;
+}
+
+async function runSync(pull) {
+  const backend = await getBackend();
+  if (!backend.isConfigured || !await backend.isSignedIn()) return;
+  // A pull also checks that the account still knows this device. If it doesn't, for example
+  // after a password change elsewhere, this counts as signed out and the app redraws.
+  if (pull && !await backend.getAccount()) {
+    remoteListener();
+    return;
+  }
+  let changedAny = await syncList(backend, pull);
+  await pushResults(backend);
+  if (pull) changedAny = (await pullResults(backend)) || changedAny;
+  if (changedAny) remoteListener();
+}
+
+/**
+ * Sends anything the account hasn't seen, and with pull, fetches what other devices changed.
+ * Does nothing when signed out. Failures are quiet, because everything stays marked and the
+ * next sync tries again.
+ * @param {{ pull?: boolean, force?: boolean }} [options] force pulls even if it pulled recently
  * @returns {Promise<void>}
  */
-export function syncNow() {
+export function syncNow({ pull = false, force = false } = {}) {
   clearTimeout(syncTimer);
-  if (!syncing) {
-    syncing = pushPending()
-      .catch((err) => console.warn('Streakle sync:', err))
-      .finally(() => { syncing = null; });
+  const doPull = pull && (force || Date.now() - lastPull > PULL_EVERY_MS);
+  if (syncing) {
+    // One at a time. A pull that was asked for runs straight after the current one.
+    return doPull ? syncing.then(() => syncNow({ pull, force: true })) : syncing;
   }
+  if (doPull) lastPull = Date.now();
+  syncing = runSync(doPull)
+    .catch((err) => console.warn('Streakle sync:', err))
+    .finally(() => { syncing = null; });
   return syncing;
 }
 
-/** After leaving, the server has nothing, so everything counts as unsent if they rejoin. */
-export function markAllUnsynced() {
+/** Everything here counts as not yet sent, and tombstones go, since no account has them. */
+function markAllUnsynced() {
   for (const [key, row] of [...results]) {
     if (row.deleted) {
       results.delete(key);
@@ -372,6 +503,64 @@ export function markAllUnsynced() {
       persist(fresh);
     }
   }
+}
+
+function forgetSyncState() {
+  for (const key of ['pulledAt', 'listVersion', 'listDirty']) removeSetting(key);
+}
+
+/**
+ * Right after signing in or creating an account: what's on this device joins the account, and
+ * the account's history comes down. On sign-in the account's list wins, with any games only
+ * on this device added at the end.
+ * @param {{ isNew: boolean }} options
+ * @returns {Promise<void>}
+ */
+export async function joinAccount({ isNew }) {
+  await syncing;
+  markAllUnsynced();
+  forgetSyncState();
+  const backend = await getBackend();
+  const remote = isNew ? null : await backend.myList();
+  if (remote) {
+    const localIds = readSetting('games', null);
+    const localCustoms = customGames();
+    applyRemoteList(remote);
+    const fromAccount = JSON.stringify(listSnapshot());
+    // A list that was never changed here is just the defaults, so it adds nothing.
+    if (Array.isArray(localIds)) {
+      const customs = customGames();
+      for (const game of localCustoms) if (!customs.some((c) => c.id === game.id)) customs.push(game);
+      writeSetting('customGames', customs);
+      writeSetting('games', [...new Set([...readSetting('games', []), ...localIds])].filter((id) => findGame(id)));
+    }
+    writeSetting('listVersion', remote.version);
+    if (JSON.stringify(listSnapshot()) !== fromAccount) listChanged();
+  } else {
+    listChanged();
+  }
+  await syncNow({ pull: true, force: true });
+}
+
+/** After signing out: the account has everything, so this device starts fresh. */
+export async function clearLocalData() {
+  clearTimeout(syncTimer);
+  await syncing;
+  results.clear();
+  try {
+    await dbRun('readwrite', (s) => s.clear());
+  } catch (err) {
+    console.warn('Streakle storage:', err);
+  }
+  for (const key of ['games', 'customGames', 'compareGame']) removeSetting(key);
+  forgetSyncState();
+}
+
+/** After deleting the account: history stays here, unsent, as if it had never been signed in. */
+export async function leaveAccount() {
+  await syncing;
+  markAllUnsynced();
+  forgetSyncState();
 }
 
 /* ---------------------------- backup ---------------------------- */
@@ -429,6 +618,7 @@ export function restoreBackup(data) {
   const ids = Array.isArray(data.games) ? data.games.filter((id) => typeof id === 'string' && findGame(id)) : [];
   const merged = [...myGames().map((game) => game.id), ...ids];
   writeSetting('games', [...new Set(merged)]);
+  listChanged();
   changed();
   return { added };
 }

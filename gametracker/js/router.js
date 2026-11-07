@@ -1,6 +1,6 @@
 // Hash routes. They survive refreshes and need no 404 tricks on GitHub Pages.
 
-const ROUTES = ['today', 'compare', 'streaks', 'friends', 'games'];
+const ROUTES = ['today', 'compare', 'streaks', 'friends', 'games', 'account'];
 
 /**
  * @typedef {object} Route
@@ -17,6 +17,10 @@ export function parseHash(hash) {
   const parts = String(hash).replace(/^#\/?/, '').split('/').filter(Boolean);
   if (parts[0] === 'add' && parts.length === 2) {
     return { name: 'friends', params: { code: decodeURIComponent(parts[1]) } };
+  }
+  // Signing in from an invite link, which then goes on to add the friend.
+  if (parts[0] === 'account' && parts[1] === 'add' && parts.length === 3) {
+    return { name: 'account', params: { code: decodeURIComponent(parts[2]) } };
   }
   if (parts[0] === 'compare' && parts.length === 2) {
     return { name: 'compare', params: { game: decodeURIComponent(parts[1]) } };

@@ -16,7 +16,7 @@ The same as Splotchle and Novle, because the hosting is the same.
 - **No runtime npm dependencies.** The one exception is `vendor/supabase.js`, a pinned copy of `@supabase/supabase-js` 2.119.0 (MIT), loaded on demand by `api.js`.
 - **Relative paths only.** The app is served from `/gametracker/`. Never hard-code `williamschell.dev` except in meta tags.
 - **Supabase is the only backend.** All security comes from Row Level Security and database constraints, never client code. Never commit the `service_role` key.
-- **Local first.** The list, logging and streaks must keep working if Supabase is down or not set up. Nothing is uploaded until the person chooses to start comparing.
+- **Local first.** The list, logging and streaks must keep working if Supabase is down, not set up, or the person never makes an account. Nothing is uploaded until they sign in.
 - **Its own Supabase project and its own copies of shared helpers.** Never point `js/config.js` at Splotchle's or Novle's project, and never import from `../splotchle/`.
 - **Static and fast.** First load well under 200 KB. No analytics or trackers. Don't start file names with `_` (Jekyll ignores them).
 
@@ -41,7 +41,7 @@ gametracker/
 │   ├── config.js       # Supabase URL + anon key (public values only)
 │   ├── router.js       # Hash routes
 │   ├── ui.js           # Element builder, icons, toasts, dialogs
-│   └── views/          # today, compare, streaks, friends, games
+│   └── views/          # today, compare, streaks, friends, games, account
 ├── assets/             # favicon.svg, icons/sprite.svg, fonts/ (Patrick Hand + OFL.txt)
 ├── vendor/supabase.js
 ├── supabase/           # schema.sql and setup README
@@ -59,8 +59,9 @@ gametracker/
 - **Today** (`#/today`): every game on your list with a Play link, your result, your streak and how you stand against friends. A box takes pasted share text and works out the game and score by itself. You can step back through earlier days to log something you missed.
 - **Compare** (`#/compare`): a ranked board for one game on one day, for Friends or Everyone.
 - **Streaks** (`#/streaks`): your overall streak, plus current, best, total and a 12-week calendar for each game.
-- **Friends** (`#/friends`): choose to start comparing, set a name, share a friend code or link, add and remove friends, opt out of Everyone, delete your data. `#/add/CODE` opens this view with the code filled in.
+- **Friends** (`#/friends`): share a friend code or link, add and remove friends. `#/add/CODE` opens this view with the code filled in. Signed out, it sends you to Account via `#/account/add/CODE`, which comes back here afterwards.
 - **Games** (`#/games`): add and remove games, reorder them, add custom games, and back up or restore everything as a JSON file.
+- **Account** (`#/account`, from the top bar): sign in or make an account with a username and password, then set your board name, opt out of Everyone, change your password, sign out or delete the account.
 
 **Splotchle and Krillion are on everyone's list by default** (`DEFAULT_GAMES`). They can still be removed like any other game and added back. Defaults only apply to a list that has never been saved, so changing them doesn't touch existing players' lists.
 
@@ -82,7 +83,7 @@ Failed results rank below every finished one. Ties share a rank (1, 2, 2, 4). Th
 
 To add a game, add it to `CATALOG` in `catalog.js`, and add a parser in `parse.js` if it has share text. Add a real sample to `tests/tests.js` too. **The parsers were written from known formats, so check each one against real share text when you can**, and treat a mismatch as a bug. Manual entry always works.
 
-Custom games get the id `c-<slug of name>`, so two people who add a game with the same name share a board. A custom game's URL never leaves the device, and only `http:` and `https:` URLs are accepted, so a link can't run script.
+Custom games get the id `c-<slug of name>`, so two people who add a game with the same name share a board. A custom game's link is saved to its owner's account but never shown to anyone else, and only `http:` and `https:` URLs are accepted, so a link can't run script. Custom games coming back from the server are rebuilt through `makeCustomGame` like typed ones.
 
 ## 5. Splotchle and Novle
 
@@ -95,10 +96,11 @@ They share this origin, so `external.js` can read their localStorage: `splotchio
 ## 6. Local data
 
 - IndexedDB database `gametracker`, store `results`, key `gameId|date`: `{ gameId, date, score, failed, source, updatedAt, synced, deleted }`. Everything is loaded into memory at startup.
-- localStorage, prefix `gametracker:`: `games` (ordered ids), `customGames`, `theme`.
+- localStorage, prefix `gametracker:`: `games` (ordered ids), `customGames`, `theme`, `account` (`{ username }`, which browser is signed in to what, so signed-out visits never load the Supabase client), and the sync state `pulledAt`, `listVersion` and `listDirty`.
 - `?demo` uses `gametracker-demo` and `gametracker-demo:` instead, so demo play never touches real data.
 - Storage failures show a toast and never throw.
 - Clearing a synced result leaves a `deleted` tombstone until the server has been told.
+- **Signed in, the account is the lasting copy and the browser is a cache of it** (`store.js`, sync section). Changes go up within a second. Other devices' changes come down on open and on returning to the tab, at most every 20 s. A change not yet sent always beats the server's copy. Signing in merges the browser into the account, signing out clears the browser, and deleting the account leaves the history in the browser.
 
 Dates are the person's **local** date, Wordle-style. A result belongs to the day it was logged for, not to a puzzle number.
 
@@ -106,12 +108,12 @@ Dates are the person's **local** date, Wordle-style. A result belongs to the day
 
 See `supabase/schema.sql` and `supabase/README.md`.
 
-- **Identity is an anonymous Supabase sign-in, per browser.** There's no signup screen, so **a phone and a laptop are two different players**, and clearing site data loses the account. Local history survives, and the JSON backup moves it. Linking an email is the obvious next step.
-- **Joining is explicit.** Nothing is sent until the person presses Start comparing, which sends the last 7 days. The server rejects dates older than that or more than a day ahead.
-- **Only numbers go to the server**: game id, date, score and failed. Share text and grids stay local, so a board can't spoil anyone's puzzle.
+- **Accounts are a username and password, with no email**, kept in our own tables (`accounts`, `sessions`) rather than Supabase Auth, whose password sign-in needs a real email. Each browser has an anonymous Supabase session that's only a device id. `sign_in` links it to an account, and **`public.me()` is the player everywhere, never `auth.uid()`**, except for per-device rate limits. Passwords are bcrypt through `pgcrypto` and never leave the definer functions. A forgotten password is reset by William in SQL (README).
+- **History is all synced**: every result from 2015 on, the game list and custom games. A result written more than a week after its day is `backfilled` and kept off boards, so past boards can't change. Cleared results stay as `deleted` tombstones so other devices hear about them. Boards always filter both.
+- **Only numbers and the list go to the server**: game id, date, score, failed, and the list with custom games' names and links (readable only by their owner). Share text and grids stay local, so a board can't spoil anyone's puzzle.
 - **Friends are mutual and code-based.** Having someone's code is the consent, so there's no search and no request inbox. Codes are private to their owner and can be changed, which invalidates old links but keeps existing friends.
 - **Scores are self-reported and can't be verified**, because the games are on other sites. Treat Everyone as for fun. The lever against cheaters is `profiles.banned`, set from the dashboard.
-- The client only uses RPCs. They're `security invoker` wherever possible, so RLS still applies inside them. `add_friend`, `rotate_friend_code` and the trigger functions are `security definer` with an empty search path.
+- The client only uses RPCs. They're `security invoker` wherever possible, so RLS still applies inside them. The account functions, `me`, `my_account`, `add_friend`, `rotate_friend_code` and the trigger functions are `security definer` with an empty search path. Anything that can fail on a guess (`sign_in`, `add_friend`) returns a value instead of raising, because raising rolls back the record of the attempt.
 
 ## 8. Demo mode
 
@@ -148,7 +150,7 @@ It runs the app with the real `api.js` and the real supabase-js against the real
 ## 11. Out of scope (for now)
 
 - Reading scores from other sites automatically. Browsers don't allow it, and these games don't offer APIs. A browser extension is the only real route.
-- Accounts across devices, push notifications and reminders.
+- Email, password reset by email, push notifications and reminders.
 - Group leaderboards beyond one friend list, and all-time rankings.
 - Chat, comments and reactions. Names are the only text any player can show another.
 

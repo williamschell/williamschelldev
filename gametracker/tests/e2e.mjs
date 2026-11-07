@@ -352,13 +352,49 @@ async function rejected(promise) {
   await context.close();
 }
 
+/* ---------------------------- accounts, driven through the UI ---------------------------- */
+const accountForm = (page) => page.locator('.account-form');
+
+async function fillAccountForm(page, mode, username, password, again = password) {
+  await page.waitForSelector('.account-form');
+  const want = mode === 'create' ? 'Create account' : 'Sign in';
+  const tab = page.locator(`.segmented button:has-text("${want}")`);
+  if (await tab.getAttribute('aria-pressed') !== 'true') {
+    await tab.click();
+    await page.waitForSelector(`.account-form button[type=submit]:has-text("${want}")`);
+  }
+  await accountForm(page).locator('input[autocomplete=username]').fill(username);
+  const passwords = accountForm(page).locator('input[type=password]');
+  await passwords.nth(0).fill(password);
+  if (mode === 'create') await passwords.nth(1).fill(again);
+  await accountForm(page).locator('button[type=submit]').click();
+}
+
+/** Makes an account from the Account view and waits until it lands back on Today. */
+async function createAccount(page, username, password = 'correct horse') {
+  if (!page.url().includes('#/account')) await go(page, '#/account');
+  await fillAccountForm(page, 'create', username, password);
+  await page.waitForFunction(() => !window.location.hash.startsWith('#/account'));
+  await page.waitForTimeout(300);
+}
+
+async function signInAs(page, username, password = 'correct horse') {
+  if (!page.url().includes('#/account')) await go(page, '#/account');
+  await fillAccountForm(page, 'signin', username, password);
+  await page.waitForFunction(() => !window.location.hash.startsWith('#/account'));
+  await page.waitForTimeout(300);
+}
+
 /* ---------------------------- demo ---------------------------- */
 {
   const { context, page } = await player();
   await page.goto(`${APP}?demo#/friends`);
-  await page.waitForSelector('#view form');
+  await page.waitForSelector('#view .card');
   check('demo says the players are made up', (await page.locator('#demo-banner').innerText()).includes('made up'));
-  await page.click('button:has-text("Start comparing")');
+  check('Friends asks you to sign in first', (await page.locator('#view').innerText()).includes('Sign in'));
+  await page.click('a:has-text("Sign in or create an account")');
+  await createAccount(page, 'demo_me', 'anything123');
+  await go(page, '#/friends');
   await page.waitForSelector('.friend-list');
   same('demo has friends', await page.locator('.friend-list li').count(), 3);
   await shot(page, '05-demo-friends');
@@ -386,68 +422,103 @@ const seedResult = (user, game, date, score, failed = false) => admin(`
   values ('${user}', '${game}', '${date}', ${score === null ? 'null' : score}, ${failed})
   on conflict (user_id, game_id, play_date) do update set score = excluded.score, failed = excluded.failed`);
 
+/** An account made straight in the database, for players the test doesn't drive. */
+async function seedAccount(username, publicBoard = true) {
+  const device = await newUser();
+  await as(device, `select public.sign_up('${username}', 'password123', ${publicBoard})`);
+  const [{ id }] = await admin(`select id from public.accounts where username = '${username}'`);
+  return { id, device };
+}
+
+const serverResults = (accountId, game = 'wordle') => admin(`
+  select play_date, score, failed, deleted, backfilled from public.results
+  where user_id = '${accountId}' and game_id = '${game}' order by play_date`);
+
 {
   const a = await player({ backend: true });
   const b = await player({ backend: true });
   const c = await player({ backend: true });
+  const TEN_DAYS_AGO = dayOffset(-10);
 
-  // Nothing leaves the device before joining.
+  // Nothing leaves the device before signing in.
   requestLog.length = 0;
   await open(a.page);
-  check('the client isn\'t downloaded before joining', !requestLog.some((p) => p.includes('supabase.js')));
+  check('the client isn\'t downloaded before signing in', !requestLog.some((p) => p.includes('supabase.js')));
+  check('the top bar offers signing in', (await a.page.locator('#account-label').innerText()) === 'Sign in');
   await paste(a.page, 'Wordle 1,234 4/6');
   await a.page.waitForTimeout(1200);
-  check('logging before joining sends nothing', !requestLog.some((p) => p.startsWith('/sb/')));
-  same('nothing on the server before joining', (await admin('select count(*)::int as n from public.results'))[0].n, 0);
+  check('logging before signing in sends nothing', !requestLog.some((p) => p.startsWith('/sb/')));
+  same('nothing on the server before signing in', (await admin('select count(*)::int as n from public.results'))[0].n, 0);
+  check('Today suggests signing in once there\'s something to lose', (await a.page.locator('#view').innerText()).includes('only live in this browser'));
 
-  // Dates inside and outside the window the server accepts, logged before joining.
+  // History from before the account existed, including a day too old for boards.
   await a.page.click('[aria-label="Previous day"]');
   await paste(a.page, 'Wordle 1,233 2/6');
   for (let i = 0; i < 9; i += 1) await a.page.click('[aria-label="Previous day"]');
   await paste(a.page, 'Wordle 1,224 5/6');
 
-  await go(a.page, '#/friends');
-  await a.page.waitForSelector('button:has-text("Start comparing")');
-  await a.page.locator('.card input[type=text]').fill('x');
-  await a.page.click('button:has-text("Start comparing")');
-  check('a bad name is caught', (await toastText(a.page)).includes('2 to 24'));
-  await a.page.locator('.card input[type=text]').fill('Ada');
-  await a.page.click('button:has-text("Start comparing")');
-  await a.page.waitForSelector('.friend-code');
-  await a.page.waitForTimeout(300);
+  // Checks before anything is sent.
+  await go(a.page, '#/account');
+  await fillAccountForm(a.page, 'create', 'x', 'correct horse');
+  check('a short username is caught', (await toastText(a.page)).includes('3 to 20'));
+  await fillAccountForm(a.page, 'create', 'ada', 'short');
+  check('a short password is caught', (await toastText(a.page)).includes('8 characters'));
+  await fillAccountForm(a.page, 'create', 'ada', 'correct horse', 'correct house');
+  check('mismatched passwords are caught', (await toastText(a.page)).includes('don\'t match'));
+  check('no account was made by the checks', (await admin('select count(*)::int as n from public.accounts'))[0].n === 0);
 
-  const aRows = await admin(`select user_id, play_date, score, failed from public.results where game_id = 'wordle' order by play_date`);
-  same('joining sends the past week and not the older day', aRows.map((r) => sqlDate(r.play_date)), [YESTERDAY, TODAY]);
-  same('server has the right scores', aRows.map((r) => r.score), [2, 4]);
-  const aId = aRows[0].user_id;
+  await createAccount(a.page, 'Ada');
+  same('the top bar shows who\'s signed in', await a.page.locator('#account-label').innerText(), 'ada');
+  check('the reminder goes once signed in', !(await a.page.locator('#view').innerText()).includes('only live in this browser'));
+  const [{ id: aId }] = await admin(`select id from public.accounts where username = 'ada'`);
+  check('usernames are stored lowercase', Boolean(aId));
+  const aRows = await serverResults(aId);
+  same('making an account sends all the history', aRows.map((r) => sqlDate(r.play_date)), [TEN_DAYS_AGO, YESTERDAY, TODAY]);
+  same('with the right scores', aRows.map((r) => r.score), [5, 2, 4]);
+  same('the old day is kept off boards', aRows.map((r) => r.backfilled), [true, false, false]);
+  const aList = await admin(`select games from public.lists where user_id = '${aId}'`);
+  same('the game list is saved to the account', aList[0]?.games, ['splotchle', 'krillion', 'wordle']);
+  check('the password isn\'t stored as typed', !JSON.stringify(await admin('select * from public.accounts')).includes('correct horse'));
+  await go(a.page, '#/account');
+  await a.page.waitForSelector('.username');
+  check('Account says who you are', (await a.page.locator('#view').innerText()).includes('Signed in as ada'));
+  await shot(a.page, '07-account');
+  await go(a.page, '#/friends');
+  await a.page.waitForSelector('.friend-code');
   const code = await a.page.locator('.friend-code').innerText();
   check('friend code has the right shape', /^[0-9A-F]{10}$/.test(code), code);
-  await shot(a.page, '07-account');
 
-  // Everyone board, viewed by someone who hasn't joined.
+  // Everyone board, viewed by someone who hasn't signed in.
   await open(c.page, '#/compare/wordle');
   await c.page.waitForSelector('.board-table');
-  check('Everyone can be read without joining', (await c.page.locator('.board-table').innerText()).includes('Ada'));
-  check('and it says you aren\'t on it', (await c.page.locator('#view').innerText()).includes('without joining'));
+  check('Everyone can be read without signing in', (await c.page.locator('.board-table').innerText()).includes('ada'));
+  check('and it says you aren\'t on it', (await c.page.locator('#view').innerText()).includes('without signing in'));
 
-  // Invite link, with a name to pick first.
+  // A taken username, in any case.
+  await go(c.page, '#/account');
+  await fillAccountForm(c.page, 'create', 'ADA', 'another pass');
+  check('a taken username is explained', (await toastText(c.page)).includes('taken'));
+
+  // Invite link, with an account to make first.
   await open(b.page, `#/add/${code}`);
-  await b.page.waitForSelector('button:has-text("Start comparing")');
-  check('invite link asks for a name first', (await b.page.locator('#view').innerText()).includes('add your friend right after'));
-  await b.page.locator('.card input[type=text]').fill('Bo');
-  await b.page.click('button:has-text("Start comparing")');
-  await b.page.waitForSelector('.friend-code');
+  await b.page.waitForSelector('#view .card');
+  check('invite link asks you to sign in first', (await b.page.locator('#view').innerText()).includes('add your friend right after'));
+  await b.page.click('a:has-text("Sign in or create an account")');
+  await b.page.waitForSelector('.account-form');
+  check('the account page remembers the invite', (await b.page.locator('#view').innerText()).includes('add your friend right after'));
+  await fillAccountForm(b.page, 'create', 'ben', 'ben password');
+  await b.page.waitForSelector('input[aria-label="Friend code"]');
   same('invite code carries through', await b.page.locator('input[aria-label="Friend code"]').inputValue(), code);
   await b.page.click('.card:has-text("Add a friend") button');
-  check('adding reports the friend', (await toastText(b.page)).includes('Ada'));
+  check('adding reports the friend', (await toastText(b.page)).includes('ada'));
   await b.page.waitForSelector('.friend-list li');
-  check('friend is listed', (await b.page.locator('.friend-list').innerText()).includes('Ada'));
+  check('friend is listed', (await b.page.locator('.friend-list').innerText()).includes('ada'));
   await go(a.page, '#/today');
   await go(a.page, '#/friends');
   await a.page.waitForSelector('.friend-list li');
-  check('friendship goes both ways', (await a.page.locator('.friend-list').innerText()).includes('Bo'));
+  check('friendship goes both ways', (await a.page.locator('.friend-list').innerText()).includes('ben'));
 
-  // Bo logs and compares.
+  // Ben logs and compares.
   await go(b.page, '#/today');
   await b.page.waitForSelector('.paste-box');
   await paste(b.page, 'Wordle 1,234 3/6');
@@ -455,7 +526,7 @@ const seedResult = (user, game, date, score, failed = false) => admin(`
   await go(b.page, '#/compare/wordle');
   await b.page.waitForSelector('.board-table');
   const boardRows = await b.page.locator('.board-table tbody tr').allInnerTexts();
-  check('Bo ranks above Ada', boardRows[0].includes('Bo') && boardRows[1].includes('Ada'), boardRows.join('|'));
+  check('ben ranks above ada', boardRows[0].includes('ben') && boardRows[1].includes('ada'), boardRows.join('|'));
   check('rows show the score', boardRows[0].includes('3/6') && boardRows[1].includes('4/6'));
   check('your own row is marked', (await b.page.locator('tr.me').innerText()).includes('You'));
   await shot(b.page, '08-board');
@@ -467,19 +538,20 @@ const seedResult = (user, game, date, score, failed = false) => admin(`
   await shot(a.page, '09-today-friends');
 
   // The server's streak, ranking and the client's agree.
-  const dan = await newUser();
-  await as(dan, `select public.save_profile('Dan', true)`);
+  const dan = (await seedAccount('dan')).id;
   await seedResult(dan, 'wordle', TODAY, null, true);
   await seedResult(dan, 'wordle', YESTERDAY, 1);
   await seedResult(dan, 'wordle', dayOffset(-2), 1);
   await seedResult(dan, 'wordle', dayOffset(-4), 1);
-  const eve = await newUser();
-  await as(eve, `select public.save_profile('Eve', true)`);
-  await seedResult(eve, 'wordle', TODAY, 3);
+  const eveAccount = await seedAccount('eve');
+  const eve = eveAccount.device;
+  await seedResult(eveAccount.id, 'wordle', TODAY, 3);
   const board = await as(eve, `select * from public.game_board('wordle', '${TODAY}', 'everyone', true)`);
-  same('server ranks with ties and failures last', board.map((r) => [r.display_name, Number(r.rank)]), [['Bo', 1], ['Eve', 1], ['Ada', 3], ['Dan', 4]]);
-  same('server streak stops at a gap', Number(board.find((r) => r.display_name === 'Dan').streak), 3);
-  same('server marks you', board.filter((r) => r.is_me).map((r) => r.display_name), ['Eve']);
+  same('server ranks with ties and failures last', board.map((r) => [r.display_name, Number(r.rank)]), [['ben', 1], ['eve', 1], ['ada', 3], ['dan', 4]]);
+  same('server streak stops at a gap', Number(board.find((r) => r.display_name === 'dan').streak), 3);
+  same('server marks you', board.filter((r) => r.is_me).map((r) => r.display_name), ['eve']);
+  const oldBoard = await as(eve, `select display_name from public.game_board('wordle', '${TEN_DAYS_AGO}', 'everyone', true)`);
+  check('history sent late stays off that day\'s board', !oldBoard.some((r) => r.display_name === 'ada'));
 
   const clientRanks = await a.page.evaluate(async (rows) => {
     const { rankRows } = await import('./js/scores.js');
@@ -488,24 +560,26 @@ const seedResult = (user, game, date, score, failed = false) => admin(`
   }, board.map((r) => ({ display_name: r.display_name, score: r.score, failed: r.failed })));
   same('client and server rank the same way', clientRanks, board.map((r) => [r.display_name, Number(r.rank)]));
 
-  const higher = await newUser();
-  await as(higher, `select public.save_profile('Hi', true)`);
+  const higher = (await seedAccount('hiscore')).id;
   await seedResult(higher, 'spelling-bee', TODAY, 200);
-  await seedResult(eve, 'spelling-bee', TODAY, 50);
+  await seedResult(eveAccount.id, 'spelling-bee', TODAY, 50);
   const points = await as(eve, `select * from public.game_board('spelling-bee', '${TODAY}', 'everyone', false)`);
-  same('higher wins on points boards', points.map((r) => r.display_name), ['Hi', 'Eve']);
+  same('higher wins on points boards', points.map((r) => r.display_name), ['hiscore', 'eve']);
 
   // Changing and clearing a result reaches the server.
+  const [{ id: bId }] = await admin(`select id from public.accounts where username = 'ben'`);
+  const bToday = async () => (await serverResults(bId)).find((r) => sqlDate(r.play_date) === TODAY);
   await go(b.page, '#/today');
   await b.page.waitForSelector('.game-row');
   await row(b.page, 'wordle').locator('button:has-text("Change")').click();
   await row(b.page, 'wordle').locator('.choice:has-text("5")').click();
   await b.page.waitForTimeout(1100);
-  const bId = (await admin(`select user_id from public.profiles where display_name = 'Bo'`))[0].user_id;
-  same('a change reaches the server', (await admin(`select score from public.results where user_id = '${bId}' and game_id = 'wordle'`))[0].score, 5);
+  same('a change reaches the server', (await bToday()).score, 5);
   await row(b.page, 'wordle').locator('button:has-text("Clear")').click();
   await b.page.waitForTimeout(1100);
-  same('clearing reaches the server', (await admin(`select count(*)::int as n from public.results where user_id = '${bId}' and game_id = 'wordle'`))[0].n, 0);
+  same('clearing reaches the server', (await bToday()).deleted, true);
+  const afterClear = await as(eve, `select display_name from public.game_board('wordle', '${TODAY}', 'everyone', true)`);
+  check('a cleared result leaves the board', !afterClear.some((r) => r.display_name === 'ben'));
   await row(b.page, 'wordle').locator('button:has-text("Log score")').click();
   await row(b.page, 'wordle').locator('.choice:has-text("3")').click();
   await b.page.waitForTimeout(1100);
@@ -513,7 +587,7 @@ const seedResult = (user, game, date, score, failed = false) => admin(`
   await row(b.page, 'wordle').locator('.choice:has-text("6")').click();
   await row(b.page, 'wordle').locator('button:has-text("Clear")').click();
   await b.page.waitForTimeout(1100);
-  same('clearing right after changing still reaches the server', (await admin(`select count(*)::int as n from public.results where user_id = '${bId}' and game_id = 'wordle'`))[0].n, 0);
+  same('clearing right after changing still reaches the server', (await bToday()).deleted, true);
 
   // A logged result waits out a failed request.
   await b.page.context().route('**/sb/rest/**', (route) => route.abort());
@@ -522,7 +596,7 @@ const seedResult = (user, game, date, score, failed = false) => admin(`
   await b.page.context().unroute('**/sb/rest/**');
   await b.page.evaluate(() => window.dispatchEvent(new Event('online')));
   await b.page.waitForTimeout(500);
-  same('a result logged offline is sent later', (await admin(`select score from public.results where user_id = '${bId}' and game_id = 'wordle'`))[0]?.score, 2);
+  same('a result logged offline is sent later', (await bToday())?.score, 2);
 
   // Errors a person can run into.
   await go(b.page, '#/friends');
@@ -537,27 +611,35 @@ const seedResult = (user, game, date, score, failed = false) => admin(`
   check('own code explained', true);
 
   // Going private: friends still see you, strangers don't.
-  await go(a.page, '#/friends');
+  await go(a.page, '#/account');
   await a.page.waitForSelector('.card input[type=checkbox]');
   await a.page.locator('.card input[type=checkbox]').uncheck();
   await a.page.waitForFunction(() => document.querySelector('#toast').innerText.includes('Only your friends'));
   const strangerView = await as(eve, `select display_name from public.game_board('wordle', '${TODAY}', 'everyone', true)`);
-  check('a private player leaves Everyone', !strangerView.some((r) => r.display_name === 'Ada'));
+  check('a private player leaves Everyone', !strangerView.some((r) => r.display_name === 'ada'));
   const anonView = await as(null, `select display_name from public.game_board('wordle', '${TODAY}', 'everyone', true)`);
-  check('and is hidden from visitors too', !anonView.some((r) => r.display_name === 'Ada'));
-  const friendView = await as(bId, `select display_name from public.game_board('wordle', '${TODAY}', 'friends', true)`);
-  check('but a friend can still see them', friendView.some((r) => r.display_name === 'Ada'));
+  check('and is hidden from visitors too', !anonView.some((r) => r.display_name === 'ada'));
+  const [{ auth_uid: bDevice }] = await admin(`select auth_uid from public.sessions where account_id = '${bId}'`);
+  const friendView = await as(bDevice, `select display_name from public.game_board('wordle', '${TODAY}', 'friends', true)`);
+  check('but a friend can still see them', friendView.some((r) => r.display_name === 'ada'));
+
+  // Renaming.
+  await a.page.fill('input[aria-label="Your name on boards"]', 'Ada L');
+  await a.page.click('.card:has-text("Your name on boards") button:has-text("Save")');
+  await a.page.waitForFunction(() => document.querySelector('#toast').innerText.includes('Name saved'));
+  same('renaming reaches the server', (await admin(`select display_name from public.profiles where user_id = '${aId}'`))[0].display_name, 'Ada L');
 
   // Rotating a code.
+  await go(a.page, '#/friends');
+  await a.page.waitForSelector('.friend-code');
   await a.page.click('button:has-text("Change code")');
   await a.page.click('dialog button:has-text("Change code")');
   await a.page.waitForFunction((old) => document.querySelector('.friend-code')?.innerText !== old, code);
   const fresh = await a.page.locator('.friend-code').innerText();
   check('rotating changes the code', fresh !== code && /^[0-9A-F]{10}$/.test(fresh));
   await a.page.waitForSelector('.friend-list li');
-  check('rotating keeps friends', (await a.page.locator('.friend-list').innerText()).includes('Bo'));
-  const carl = await newUser();
-  await as(carl, `select public.save_profile('Carl', true)`);
+  check('rotating keeps friends', (await a.page.locator('.friend-list').innerText()).includes('ben'));
+  const carl = (await seedAccount('carl')).device;
   same('the old code stops working', (await as(carl, `select public.add_friend('${code}') as name`))[0].name, null);
 
   // Copying the invite link.
@@ -567,31 +649,108 @@ const seedResult = (user, game, date, score, failed = false) => admin(`
   check('invite link has the current code', copied.endsWith(`#/add/${fresh}`), copied);
 
   // Removing a friend.
+  await go(b.page, '#/today');
   await go(b.page, '#/friends');
   await b.page.waitForSelector('.friend-list li');
-  await b.page.click('[aria-label="Remove Ada"]');
+  await b.page.click('[aria-label="Remove Ada L"]');
   await b.page.click('dialog button:has-text("Remove")');
   await b.page.waitForFunction(() => !document.querySelector('.friend-list'));
   same('removing ends it for both', (await admin('select count(*)::int as n from public.friendships'))[0].n, 0);
-  const afterRemoval = await as(bId, `select display_name from public.game_board('wordle', '${TODAY}', 'everyone', true)`);
-  check('a removed private friend disappears', !afterRemoval.some((r) => r.display_name === 'Ada'));
+  const afterRemoval = await as(bDevice, `select display_name from public.game_board('wordle', '${TODAY}', 'everyone', true)`);
+  check('a removed private friend disappears', !afterRemoval.some((r) => r.display_name === 'Ada L'));
+
+  /* ---------------------------- another device ---------------------------- */
+  // A custom game, so there's more than results to bring back.
+  await go(a.page, '#/games');
+  const form = a.page.locator('.card', { hasText: 'Add your own' });
+  await form.locator('label:has-text("Name") input').fill('Board Game Night');
+  await form.locator('label:has-text("Link") input').fill('https://example.com/bgn');
+  await form.locator('select').selectOption('done');
+  await form.locator('button[type=submit]').click();
+  await a.page.waitForTimeout(1100);
+
+  const d = await player({ backend: true });
+  await open(d.page, '#/account');
+  await fillAccountForm(d.page, 'signin', 'ada', 'wrong password');
+  check('a wrong password is explained', (await toastText(d.page)).includes('don\'t match'));
+  await signInAs(d.page, 'ADA');
+  await d.page.waitForSelector('.game-row[data-game="wordle"]');
+  check('signing in on a new device brings back today', (await rowText(d.page, 'wordle')).includes('4/6'));
+  same('and the list, in order, with custom games', await d.page.locator('.game-row').evaluateAll((els) => els.map((e) => e.dataset.game)), ['splotchle', 'krillion', 'wordle', 'c-board-game-night']);
+  same('the custom game keeps its link', await row(d.page, 'c-board-game-night').locator('a.play').getAttribute('href'), 'https://example.com/bgn');
+  await d.page.click('[aria-label="Previous day"]');
+  check('and earlier days', (await rowText(d.page, 'wordle')).includes('2/6'));
+  await go(d.page, '#/streaks');
+  const wordleCard = d.page.locator('.streak-card', { hasText: 'Wordle' });
+  same('and streaks', await wordleCard.locator('.stat-value').first().innerText(), '2');
+
+  // Changes on one device show up on the other.
+  await go(d.page, '#/today');
+  await paste(d.page, 'Connections\nPuzzle #123\n🟨🟨🟩🟨\n🟨🟨🟨🟨\n🟩🟩🟩🟩\n🟦🟦🟦🟦\n🟪🟪🟪🟪');
+  await row(d.page, 'wordle').locator('button:has-text("Clear")').click();
+  await d.page.waitForTimeout(1200);
+  await go(a.page, '#/today');
+  await a.page.reload();
+  await a.page.waitForSelector('.game-row[data-game="connections"]');
+  check('a result from another device arrives', (await rowText(a.page, 'connections')).includes('1 mistake'));
+  check('a clear from another device arrives', (await rowText(a.page, 'wordle')).includes('Log score'));
+
+  // Signing out leaves nothing behind in the browser.
+  await go(d.page, '#/account');
+  await d.page.waitForSelector('button:has-text("Sign out")');
+  await d.page.click('button:has-text("Sign out")');
+  await d.page.waitForFunction(() => document.getElementById('account-label')?.innerText === 'Sign in');
+  await d.page.waitForSelector('.game-row');
+  same('signing out clears this browser', await d.page.locator('.game-row').evaluateAll((els) => els.map((e) => e.dataset.game)), ['splotchle', 'krillion']);
+  same('the device is unlinked on the server', (await admin(`select count(*)::int as n from public.sessions where account_id = '${aId}'`))[0].n, 1);
+
+  // A new password signs out every other device.
+  await signInAs(d.page, 'ada');
+  await go(a.page, '#/account');
+  await a.page.waitForSelector('input[autocomplete=new-password]');
+  await a.page.fill('input[autocomplete=current-password]', 'not it');
+  await a.page.fill('input[autocomplete=new-password]', 'battery staple');
+  await a.page.click('button:has-text("Change password")');
+  check('a wrong current password is refused', (await toastText(a.page)).includes('isn\'t right'));
+  await a.page.fill('input[autocomplete=current-password]', 'correct horse');
+  await a.page.fill('input[autocomplete=new-password]', 'battery staple');
+  await a.page.click('button:has-text("Change password")');
+  await a.page.waitForFunction(() => document.querySelector('#toast').innerText.includes('Password changed'));
+  await d.page.reload();
+  await d.page.waitForFunction(() => document.getElementById('account-label')?.innerText === 'Sign in');
+  check('other devices are signed out by a new password', true);
+  await go(d.page, '#/account');
+  await fillAccountForm(d.page, 'signin', 'ada', 'correct horse');
+  check('the old password stops working', (await toastText(d.page)).includes('don\'t match'));
+  await signInAs(d.page, 'ada', 'battery staple');
+  check('the new one works', (await d.page.locator('#account-label').innerText()) === 'ada');
+  await d.context.close();
+
+  // A session survives a reload.
+  await a.page.reload();
+  await a.page.waitForSelector('.username');
+  check('still signed in after a reload', true);
 
   /* ---------------------------- forbidden actions, straight at the database ---------------------------- */
+  const eveId = eveAccount.id;
   check('can\'t save as someone else', await rejected(as(eve, `insert into public.results (user_id, game_id, play_date, score) values ('${dan}', 'hack', '${TODAY}', 1)`)));
-  check('can\'t save a far-off date', await rejected(as(eve, `select public.save_results('[{"game_id":"wordle","play_date":"2020-01-01","score":1}]')`)));
+  check('can\'t save a far-off date', await rejected(as(eve, `select public.save_results('[{"game_id":"wordle","play_date":"2010-01-01","score":1}]')`)));
   check('can\'t save far in the future', await rejected(as(eve, `select public.save_results('[{"game_id":"wordle","play_date":"2099-01-01","score":1}]')`)));
   check('can\'t save a junk game id', await rejected(as(eve, `select public.save_results('[{"game_id":"<script>","play_date":"${TODAY}","score":1}]')`)));
   check('can\'t save an absurd score', await rejected(as(eve, `select public.save_results('[{"game_id":"wordle","play_date":"${TODAY}","score":-5}]')`)));
+  check('can\'t mark a result backfilled or not', await rejected(as(eve, `update public.results set backfilled = false where user_id = '${eveId}'`)));
+  const bulk = JSON.stringify(Array.from({ length: 1001 }, (_, i) => ({ game_id: `g${i}`, play_date: TODAY, score: 1 })));
+  check('can\'t send more than 1000 results at once', await rejected(as(eve, `select public.save_results('${bulk}')`)));
   await as(eve, `update public.results set score = 1 where user_id = '${dan}'`);
   same('can\'t change someone else\'s result', (await admin(`select score from public.results where user_id = '${dan}' and play_date = '${TODAY}'`))[0].score, null);
   await as(eve, `delete from public.results where user_id = '${dan}'`);
   same('can\'t delete someone else\'s result', (await admin(`select count(*)::int as n from public.results where user_id = '${dan}'`))[0].n, 4);
-  same('can only read your own friend code', (await as(eve, 'select user_id from public.friend_codes')).map((r) => r.user_id), [eve]);
+  same('can only read your own friend code', (await as(eve, 'select user_id from public.friend_codes')).map((r) => r.user_id), [eveId]);
   same('visitors can\'t read codes', await rejected(as(null, 'select * from public.friend_codes')), true);
-  check('can\'t create a friendship directly', await rejected(as(eve, `insert into public.friendships (user_a, user_b) values ('${dan < eve ? dan : eve}', '${dan < eve ? eve : dan}')`)));
-  check('can\'t unban yourself', await rejected(as(eve, `update public.profiles set banned = false where user_id = '${eve}'`)));
+  check('can\'t create a friendship directly', await rejected(as(eve, `insert into public.friendships (user_a, user_b) values ('${dan < eveId ? dan : eveId}', '${dan < eveId ? eveId : dan}')`)));
+  check('can\'t unban yourself', await rejected(as(eve, `update public.profiles set banned = false where user_id = '${eveId}'`)));
   await as(eve, `update public.profiles set display_name = 'Pwned' where user_id = '${dan}'`);
-  same('can\'t rename someone else', (await admin(`select display_name from public.profiles where user_id = '${dan}'`))[0].display_name, 'Dan');
+  same('can\'t rename someone else', (await admin(`select display_name from public.profiles where user_id = '${dan}'`))[0].display_name, 'dan');
   check('can\'t read the blocklist', await rejected(as(eve, 'select * from public.banned_words')));
   check('can\'t read the rate log', await rejected(as(eve, 'select * from public.rate_events')));
   check('can\'t call internals directly', await rejected(as(eve, `select public.check_rate('x', 1)`)));
@@ -601,10 +760,32 @@ const seedResult = (user, game, date, score, failed = false) => admin(`
   check('bad characters in a name are refused', await rejected(as(eve, `select public.save_profile('<img src=x>', true)`)));
   await admin(`insert into public.banned_words (word) values ('rude')`);
   check('blocklisted names are refused', await rejected(as(eve, `select public.save_profile('So Rude', true)`)));
+  check('blocklisted usernames are refused', await rejected(as(await newUser(), `select public.sign_up('rudeboy', 'password123', true)`)));
+
+  // Accounts.
+  check('can\'t read accounts or password hashes', await rejected(as(eve, 'select * from public.accounts')));
+  check('can\'t read which devices are signed in', await rejected(as(eve, 'select * from public.sessions')));
+  check('can\'t link a device to someone else directly', await rejected(as(eve, `insert into public.sessions (auth_uid, account_id) values ('${eve}', '${dan}')`)));
+  check('visitors can\'t make accounts', await rejected(as(null, `select public.sign_up('ghost', 'password123', true)`)));
+  check('a taken username is refused in any case', await rejected(as(await newUser(), `select public.sign_up('ADA', 'password123', true)`)));
+  check('a short password is refused by the server', await rejected(as(await newUser(), `select public.sign_up('shorty', 'short', true)`)));
+  check('a bad username is refused by the server', await rejected(as(await newUser(), `select public.sign_up('no spaces', 'password123', true)`)));
+  same('a wrong password doesn\'t sign in', (await as(await newUser(), `select public.sign_in('eve', 'nope') as r`))[0].r, 'bad');
+  same('an unknown username doesn\'t sign in', (await as(await newUser(), `select public.sign_in('nobody', 'password123') as r`))[0].r, 'bad');
+  same('a device that isn\'t signed in has no account', await as(await newUser(), 'select * from public.my_account()'), []);
+  const locky = await seedAccount('locky');
+  let lockedOut = '';
+  for (let i = 0; i < 11; i += 1) lockedOut = (await as(await newUser(), `select public.sign_in('locky', 'guess${i}') as r`))[0].r;
+  same('ten wrong passwords lock the account', lockedOut, 'locked');
+  same('even the right password waits out the lock', (await as(await newUser(), `select public.sign_in('locky', 'password123') as r`))[0].r, 'locked');
+  check('the lock doesn\'t sign out a device already in', (await as(locky.device, 'select username from public.my_account()'))[0]?.username === 'locky');
+  same('can\'t read someone else\'s list', (await as(eve, 'select user_id from public.lists')).length, 0);
+  check('can\'t write someone else\'s list', await rejected(as(eve, `insert into public.lists (user_id, games, custom_games) values ('${aId}', '[]', '[]')`)));
+  check('a giant list is refused', await rejected(as(eve, `select public.save_list('${JSON.stringify(Array.from({ length: 201 }, (_, i) => `g${i}`))}', '[]')`)));
+  check('signing out unlinks the device', (await as(eve, 'select public.sign_out()'), (await as(eve, 'select * from public.my_account()')).length === 0));
 
   // Guessing codes is rate limited.
-  const guesser = await newUser();
-  await as(guesser, `select public.save_profile('Guesser', true)`);
+  const guesser = (await seedAccount('guesser')).device;
   let limited = false;
   for (let i = 0; i < 12 && !limited; i += 1) {
     try {
@@ -617,10 +798,11 @@ const seedResult = (user, game, date, score, failed = false) => admin(`
 
   // Banning.
   await admin(`update public.profiles set banned = true where user_id = '${dan}'`);
-  const afterBan = await as(eve, `select display_name from public.game_board('wordle', '${TODAY}', 'everyone', true)`);
-  check('a banned player leaves the boards', !afterBan.some((r) => r.display_name === 'Dan'));
+  const afterBan = await as(guesser, `select display_name from public.game_board('wordle', '${TODAY}', 'everyone', true)`);
+  check('a banned player leaves the boards', !afterBan.some((r) => r.display_name === 'dan'));
   const danCode = (await admin(`select code from public.friend_codes where user_id = '${dan}'`))[0].code;
-  same('a banned player can\'t be friended', (await as(eve, `select public.add_friend('${danCode}') as name`))[0].name, null);
+  const friendly = (await seedAccount('friendly')).device;
+  same('a banned player can\'t be friended', (await as(friendly, `select public.add_friend('${danCode}') as name`))[0].name, null);
 
   // A session from Splotchle on this same origin isn't mistaken for ours.
   const other = await player({ backend: true });
@@ -634,30 +816,25 @@ const seedResult = (user, game, date, score, failed = false) => admin(`
   check('another project\'s session is ignored', !requestLog.some((p) => p.includes('supabase.js')));
   await other.context.close();
 
-  // A session survives a reload.
-  await a.page.reload();
-  await a.page.waitForSelector('.friend-code');
-  check('still signed in after a reload', true);
-
-  // Leaving.
-  await a.page.click('button:has-text("Delete my shared data")');
+  // Deleting the account.
+  await go(a.page, '#/account');
+  await a.page.waitForSelector('button:has-text("Delete my account")');
+  await a.page.click('button:has-text("Delete my account")');
   await a.page.click('dialog button:has-text("Delete")');
-  await a.page.waitForSelector('button:has-text("Start comparing")');
-  same('leaving deletes the results', (await admin(`select count(*)::int as n from public.results where user_id = '${aId}'`))[0].n, 0);
-  same('leaving deletes the profile', (await admin(`select count(*)::int as n from public.profiles where user_id = '${aId}'`))[0].n, 0);
+  await a.page.waitForSelector('.account-form');
+  same('deleting removes the account', (await admin(`select count(*)::int as n from public.accounts where id = '${aId}'`))[0].n, 0);
+  same('and its results', (await admin(`select count(*)::int as n from public.results where user_id = '${aId}'`))[0].n, 0);
+  same('and its list', (await admin(`select count(*)::int as n from public.lists where user_id = '${aId}'`))[0].n, 0);
+  same('and its devices', (await admin(`select count(*)::int as n from public.sessions where account_id = '${aId}'`))[0].n, 0);
   await go(a.page, '#/today');
   await a.page.waitForSelector('.game-row');
-  check('local history stays after leaving', (await rowText(a.page, 'wordle')).includes('4/6'));
+  check('history stays in this browser after deleting', (await rowText(a.page, 'connections')).includes('1 mistake'));
+  same('and the top bar offers signing in again', await a.page.locator('#account-label').innerText(), 'Sign in');
 
-  // Rejoining sends it all again.
-  await go(a.page, '#/friends');
-  await a.page.waitForSelector('button:has-text("Start comparing")');
-  await a.page.locator('.card input[type=text]').fill('Ada Again');
-  await a.page.click('button:has-text("Start comparing")');
-  await a.page.waitForSelector('.friend-code');
-  await a.page.waitForTimeout(300);
-  const again = await admin(`select r.score from public.results r join public.profiles p using (user_id) where p.display_name = 'Ada Again' and r.game_id = 'wordle' order by r.play_date`);
-  same('rejoining resends the past week', again.map((r) => r.score), [2, 4]);
+  // The username is free again, and making it again sends this browser's history.
+  await createAccount(a.page, 'ada', 'third password');
+  const [{ id: again }] = await admin(`select id from public.accounts where username = 'ada'`);
+  check('a new account gets the history again', (await serverResults(again, 'connections')).length === 1);
 
   await a.context.close();
   await b.context.close();
@@ -668,11 +845,17 @@ const seedResult = (user, game, date, score, failed = false) => admin(`
 {
   const { context, page } = await player({ viewport: { width: 340, height: 700 } });
   await page.goto(`${APP}?demo#/friends`);
-  await page.waitForSelector('#view form');
-  check('fits a phone: join', await noOverflow(page));
+  await page.waitForSelector('#view .card');
+  check('fits a phone: sign-in prompt', await noOverflow(page));
   check('fits a phone: all five tabs are on screen', await page.locator('.tab').evaluateAll((tabs) => tabs.length === 5
     && tabs.every((tab) => tab.getBoundingClientRect().right <= window.innerWidth)));
-  await page.click('button:has-text("Start comparing")');
+  check('fits a phone: the top bar keeps to two rows', await page.evaluate(() => document.querySelector('.topbar').getBoundingClientRect().height < 100));
+  await go(page, '#/account');
+  await page.waitForSelector('.account-form');
+  check('fits a phone: account', await noOverflow(page));
+  await shot(page, '12-phone-account');
+  await createAccount(page, 'phone_me', 'anything123');
+  await go(page, '#/friends');
   await page.waitForSelector('.friend-code');
   check('fits a phone: friends', await noOverflow(page));
   await go(page, '#/games');

@@ -33,7 +33,7 @@ export async function renderCompare(host, ctx) {
   }
   if (!ctx.isCurrent()) return;
 
-  // Someone who hasn't joined has no friends to see, but can still read Everyone.
+  // Someone who isn't signed in has no friends to see, but can still read Everyone.
   if (!account) scope = 'everyone';
 
   const boardHost = el('div', { class: 'board' });
@@ -134,7 +134,7 @@ export async function renderCompare(host, ctx) {
   host.replaceChildren(...[
     el('header', { class: 'view-head' }, nav),
     controls,
-    !account ? el('p', { class: 'notice' }, 'You\'re viewing without joining. ', el('a', { href: '#/friends' }, 'Start comparing'), ' to put your own scores on the board.') : null,
+    !account ? el('p', { class: 'notice' }, 'You\'re viewing without signing in. ', el('a', { href: '#/account' }, 'Sign in'), ' to put your own scores on the board.') : null,
     boardHost,
     el('p', { class: 'muted small' }, 'Scores are logged by each player and can\'t be checked, so play nice. Only the score is shared, never your grid.'),
   ].filter(Boolean));

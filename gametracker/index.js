@@ -1,12 +1,14 @@
 // Entry point: routes, theme, and refreshing on focus and at midnight.
 
 import { isDemo } from './js/backend.js';
+import { BACKEND_CONFIGURED } from './js/config.js';
 import { localDateString } from './js/dates.js';
 import { startRouter } from './js/router.js';
 import {
-  collectAutoResults, initStore, onStorageError, syncNow, writeSetting,
+  collectAutoResults, initStore, onRemoteChange, onStorageError, readSetting, syncNow, writeSetting,
 } from './js/store.js';
 import { icon, toast } from './js/ui.js';
+import { renderAccount } from './js/views/account.js';
 import { renderCompare } from './js/views/compare.js';
 import { renderFriends } from './js/views/friends.js';
 import { renderGames } from './js/views/games.js';
@@ -19,11 +21,23 @@ const VIEWS = {
   streaks: renderStreaks,
   friends: renderFriends,
   games: renderGames,
+  account: renderAccount,
 };
 
 const TITLES = {
-  today: 'Today', compare: 'Compare', streaks: 'Streaks', friends: 'Friends', games: 'Games',
+  today: 'Today', compare: 'Compare', streaks: 'Streaks', friends: 'Friends', games: 'Games', account: 'Account',
 };
+
+/** The top bar says who's signed in, from what this browser remembers, without a request. */
+function drawAccountLink() {
+  const link = document.getElementById('account-link');
+  link.hidden = !(isDemo || BACKEND_CONFIGURED);
+  const username = readSetting('account', null)?.username;
+  document.getElementById('account-label').textContent = typeof username === 'string' ? username : 'Sign in';
+  link.setAttribute('aria-label', typeof username === 'string' ? `Account, signed in as ${username}` : 'Sign in');
+  if (currentRoute.name === 'account') link.setAttribute('aria-current', 'page');
+  else link.removeAttribute('aria-current');
+}
 
 const host = document.getElementById('view');
 
@@ -48,7 +62,18 @@ function render() {
     else tab.removeAttribute('aria-current');
   }
   document.title = `${TITLES[name]} · Streakle`;
+  drawAccountLink();
   VIEWS[name](host, ctx);
+}
+
+/** Redraws views that show results, unless someone is partway through typing. */
+function redrawIfSafe() {
+  drawAccountLink();
+  // The form-heavy views would lose what's been typed, so they only redraw on navigation.
+  if (['today', 'streaks', 'games'].includes(currentRoute.name)) {
+    const typing = [...host.querySelectorAll('textarea, input[type=text], input[type=url]')].some((field) => field.value !== '' && field.value !== field.defaultValue);
+    if (!typing && !host.querySelector('.game-editor')) render();
+  }
 }
 
 /** Coming back from a game's tab is the main moment anything here changes. */
@@ -60,11 +85,8 @@ function refresh() {
     lastSeenToday = today;
   }
   collectAutoResults();
-  // The two form-heavy views would lose what's been typed, so they only redraw on navigation.
-  if (currentRoute.name === 'today' || currentRoute.name === 'streaks') {
-    if (!document.querySelector('.view-host textarea:not(:placeholder-shown), .game-editor')) render();
-  }
-  syncNow();
+  redrawIfSafe();
+  syncNow({ pull: true });
 }
 
 function setupTheme() {
@@ -86,6 +108,8 @@ function setupTheme() {
 
 async function start() {
   onStorageError((message) => toast(message));
+  // Another device's changes, or finding out this browser was signed out elsewhere.
+  onRemoteChange(redrawIfSafe);
   setupTheme();
   document.getElementById('demo-banner').hidden = !isDemo;
   await initStore();
@@ -96,7 +120,7 @@ async function start() {
     currentRoute = route;
     render();
   });
-  syncNow();
+  syncNow({ pull: true, force: true });
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) refresh();

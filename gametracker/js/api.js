@@ -1,13 +1,18 @@
 // Every Supabase call lives here. The client library loads on demand, so it adds nothing to
 // the first load, and the rest of the app works without it. demo.js has the same exports.
+//
+// Accounts are a username and password kept in our own database (see the 2026-11-07
+// migration in schema.sql). Each browser has an anonymous Supabase session that's only a
+// device id, and signing in links it to an account.
 
 import { SUPABASE, BACKEND_CONFIGURED } from './config.js';
 
-const ADJECTIVES = ['Wobbly', 'Squishy', 'Sleepy', 'Lumpy', 'Gentle', 'Curious', 'Bouncy', 'Soggy', 'Fuzzy', 'Tiny', 'Grumpy', 'Jolly'];
-const ANIMALS = ['Newt', 'Otter', 'Moth', 'Toad', 'Crab', 'Heron', 'Slug', 'Vole', 'Goose', 'Lemur', 'Tapir', 'Snail'];
-
 /** Whether a backend is set up for this environment. */
 export const isConfigured = BACKEND_CONFIGURED;
+
+// Remembers which account this browser is signed in to, so someone who isn't signed in never
+// downloads the 250 KB client, and the app can say who's signed in without a request.
+const ACCOUNT_KEY = 'gametracker:account';
 
 let clientPromise = null;
 
@@ -31,29 +36,64 @@ async function rpc(name, args = {}) {
   return data;
 }
 
-// supabase-js keeps its session under this key. Checking it first means that someone who never
-// joined doesn't download the 250 KB client on every visit. The key includes the project, so a
-// session from Splotchle or Novle on this same origin doesn't count.
-function sessionKey() {
-  return `sb-${new URL(SUPABASE.url).hostname.split('.')[0]}-auth-token`;
+/** @returns {{ username: string }|null} the account this browser last signed in to */
+export function signedInAs() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ACCOUNT_KEY));
+    return typeof saved?.username === 'string' ? saved : null;
+  } catch {
+    return null;
+  }
 }
 
-async function hasSession() {
-  if (!isConfigured) return false;
+function remember(username) {
   try {
-    if (localStorage.getItem(sessionKey()) === null) return false;
-  } catch {
-    return false;
-  }
+    localStorage.setItem(ACCOUNT_KEY, JSON.stringify({ username }));
+  } catch { /* the session still works for this visit */ }
+}
+
+function forget() {
+  try {
+    localStorage.removeItem(ACCOUNT_KEY);
+  } catch { /* nothing to do */ }
+}
+
+/** Gets this browser's device session, making one the first time. */
+async function deviceSession() {
   const client = await getClient();
   const { data } = await client.auth.getSession();
-  return Boolean(data.session);
+  if (data.session) return;
+  const { error } = await client.auth.signInAnonymously();
+  if (error) throw error;
 }
 
-/** @returns {string} a name like "Wobbly Newt 482" */
-export function randomDisplayName() {
-  const pick = (list) => list[Math.floor(Math.random() * list.length)];
-  return `${pick(ADJECTIVES)} ${pick(ANIMALS)} ${Math.floor(Math.random() * 900) + 100}`;
+/**
+ * Whether this browser is signed in, as far as it knows. Cheap: no request.
+ * @returns {Promise<boolean>}
+ */
+export async function isSignedIn() {
+  return isConfigured && signedInAs() !== null;
+}
+
+/**
+ * Checks a username's shape. The server applies the same rule, plus the name blocklist.
+ * @param {string} username
+ * @returns {string|null} an error message, or null if it's fine
+ */
+export function usernameError(username) {
+  if (username.length < 3 || username.length > 20) return 'Usernames are 3 to 20 characters.';
+  if (!/^[a-z0-9_]+$/i.test(username)) return 'Use letters, numbers and _ only in a username.';
+  return null;
+}
+
+/**
+ * @param {string} password
+ * @returns {string|null} an error message, or null if it's fine
+ */
+export function passwordError(password) {
+  if (password.length < 8) return 'Passwords need at least 8 characters.';
+  if (new TextEncoder().encode(password).length > 72) return 'That password is too long.';
+  return null;
 }
 
 /**
@@ -68,29 +108,86 @@ export function displayNameError(name) {
 }
 
 /**
- * The current player, without signing anyone in.
- * @returns {Promise<{ name: string, publicBoard: boolean, code: string }|null>} null if they haven't joined
+ * The signed-in account. If the server no longer recognizes this browser, for example after
+ * the password was changed on another device, it counts as signed out.
+ * @returns {Promise<{ username: string, name: string, publicBoard: boolean, code: string }|null>}
  */
 export async function getAccount() {
-  if (!await hasSession()) return null;
+  if (!await isSignedIn()) return null;
+  const client = await getClient();
+  const { data } = await client.auth.getSession();
+  if (!data.session) {
+    forget();
+    return null;
+  }
   const rows = await rpc('my_account');
-  if (rows.length === 0) return null;
-  return { name: rows[0].display_name, publicBoard: rows[0].public_board, code: rows[0].friend_code };
+  if (rows.length === 0) {
+    forget();
+    return null;
+  }
+  const [row] = rows;
+  if (row.username !== signedInAs()?.username) remember(row.username);
+  return {
+    username: row.username, name: row.display_name, publicBoard: row.public_board, code: row.friend_code,
+  };
 }
 
 /**
- * Starts comparing: signs in anonymously if needed, and creates the player.
- * @param {string} name
+ * @param {string} username
+ * @param {string} password
  * @param {boolean} publicBoard
  * @returns {Promise<void>}
  */
-export async function join(name, publicBoard) {
-  const client = await getClient();
-  if (!await hasSession()) {
-    const { error } = await client.auth.signInAnonymously();
-    if (error) throw error;
+export async function signUp(username, password, publicBoard) {
+  await deviceSession();
+  await rpc('sign_up', { p_username: username, p_password: password, p_public: publicBoard });
+  remember(username.trim().toLowerCase());
+}
+
+/**
+ * @param {string} username
+ * @param {string} password
+ * @returns {Promise<void>}
+ */
+export async function signIn(username, password) {
+  await deviceSession();
+  const outcome = await rpc('sign_in', { p_username: username, p_password: password });
+  if (outcome === 'locked') throw Object.assign(new Error('Locked'), { code: 'LOCKED' });
+  if (outcome !== 'ok') throw Object.assign(new Error('Bad login'), { code: 'BAD_LOGIN' });
+  remember(username.trim().toLowerCase());
+}
+
+/**
+ * Signs this browser out. The device session stays, ready for the next sign-in. If the server
+ * can't be told, for example when offline, the browser drops its session instead, so nobody
+ * using this browser afterwards can act as the account.
+ */
+export async function signOut() {
+  forget();
+  try {
+    await rpc('sign_out');
+  } catch (err) {
+    const client = await getClient();
+    await client.auth.signOut({ scope: 'local' });
+    throw err;
   }
-  await rpc('save_profile', { p_name: name, p_public: publicBoard });
+}
+
+/**
+ * Also signs out every other device.
+ * @param {string} oldPassword
+ * @param {string} newPassword
+ * @returns {Promise<void>}
+ */
+export async function changePassword(oldPassword, newPassword) {
+  const ok = await rpc('change_password', { p_old: oldPassword, p_new: newPassword });
+  if (!ok) throw Object.assign(new Error('Bad login'), { code: 'BAD_PASSWORD' });
+}
+
+/** Deletes the account and everything in it from the server. */
+export async function deleteAccount() {
+  await rpc('delete_my_account');
+  forget();
 }
 
 /**
@@ -105,13 +202,6 @@ export async function updateAccount(name, publicBoard) {
 /** @returns {Promise<string>} the new friend code */
 export function rotateCode() {
   return rpc('rotate_friend_code');
-}
-
-/** Deletes everything on the server for this player and signs out. */
-export async function leave() {
-  await rpc('delete_my_data');
-  const client = await getClient();
-  await client.auth.signOut();
 }
 
 /**
@@ -138,24 +228,41 @@ export function listFriends() {
 }
 
 /**
- * @param {{ gameId: string, date: string, score: number|null, failed: boolean }[]} rows
+ * Saves results, including tombstones for cleared ones.
+ * @param {{ gameId: string, date: string, score: number|null, failed: boolean, deleted?: boolean }[]} rows
  * @returns {Promise<void>}
  */
 export async function saveResults(rows) {
   await rpc('save_results', {
     p_rows: rows.map((r) => ({
-      game_id: r.gameId, play_date: r.date, score: r.score, failed: r.failed,
+      game_id: r.gameId, play_date: r.date, score: r.score, failed: r.failed, deleted: Boolean(r.deleted),
     })),
   });
 }
 
 /**
- * @param {string} gameId
- * @param {string} date
- * @returns {Promise<void>}
+ * This account's results changed since a point in time, oldest change first.
+ * @param {string|null} since a server timestamp from an earlier call, or null for everything
+ * @returns {Promise<{ game_id: string, play_date: string, score: number|null, failed: boolean, deleted: boolean, updated_at: string }[]>}
  */
-export async function deleteResult(gameId, date) {
-  await rpc('delete_result', { p_game: gameId, p_date: date });
+export function myResults(since) {
+  return rpc('my_results', { p_since: since });
+}
+
+/**
+ * @param {string[]} games ordered ids
+ * @param {object[]} customGames
+ * @returns {Promise<string>} the list's new version
+ */
+export function saveList(games, customGames) {
+  return rpc('save_list', { p_games: games, p_custom: customGames });
+}
+
+/** @returns {Promise<{ games: unknown, customGames: unknown, version: string }|null>} */
+export async function myList() {
+  const rows = await rpc('my_list');
+  if (rows.length === 0) return null;
+  return { games: rows[0].games, customGames: rows[0].custom_games, version: rows[0].updated_at };
 }
 
 /**

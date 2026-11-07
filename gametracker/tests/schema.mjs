@@ -17,6 +17,10 @@ const SUPABASE_STANDIN = `
   $$;
   grant usage on schema auth, public to anon, authenticated;
   grant execute on function auth.uid() to anon, authenticated;
+  -- Supabase keeps pgcrypto in its own schema, so the SQL names it as extensions.crypt.
+  create schema extensions;
+  create extension pgcrypto with schema extensions;
+  grant usage on schema extensions to anon, authenticated;
 `;
 
 /** Quotes a value as a SQL literal. Test code only. */
@@ -32,9 +36,10 @@ function literal(value) {
  * @param {string} schemaPath
  */
 export async function createDatabase(depsDir, schemaPath) {
-  const url = pathToFileURL(join(depsDir, 'node_modules/@electric-sql/pglite/dist/index.js')).href;
-  const { PGlite } = await import(url);
-  const db = new PGlite();
+  const base = join(depsDir, 'node_modules/@electric-sql/pglite/dist');
+  const { PGlite } = await import(pathToFileURL(join(base, 'index.js')).href);
+  const { pgcrypto } = await import(pathToFileURL(join(base, 'contrib/pgcrypto.js')).href);
+  const db = new PGlite({ extensions: { pgcrypto } });
   await db.exec(SUPABASE_STANDIN);
   await db.exec(readFileSync(schemaPath, 'utf8'));
 
@@ -53,6 +58,7 @@ export async function createDatabase(depsDir, schemaPath) {
     literal,
     /** Runs as the database owner, which is what the dashboard does. */
     admin: async (sql) => (await db.query(sql)).rows,
+    /** A device: an anonymous auth user with no account yet. */
     newUser: async () => {
       const id = randomUUID();
       await db.query(`insert into auth.users (id) values ('${id}')`);
@@ -62,7 +68,7 @@ export async function createDatabase(depsDir, schemaPath) {
 }
 
 /** Functions that return one value, which PostgREST hands back bare. */
-const SCALAR = new Set(['add_friend', 'rotate_friend_code']);
+const SCALAR = new Set(['add_friend', 'rotate_friend_code', 'sign_in', 'change_password', 'save_list']);
 
 const send = (res, status, body) => {
   res.writeHead(status, { 'content-type': 'application/json' });
