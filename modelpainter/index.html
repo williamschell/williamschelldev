@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Splotchle 3D: paint models twice, once in light and once in shadow</title>
+<meta name="description" content="A browser 3D texture painter for painted cel shading. Paint a lit pass and a shadow pass, and a toon shader blends them under real lighting.">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#1550e0">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#6b0f1f">
+<link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./css/styles.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/build/three.module.js",
+    "three/addons/": "./vendor/three/examples/jsm/",
+    "three-mesh-bvh": "./vendor/three-mesh-bvh/index.module.js"
+  }
+}
+</script>
+<script>
+  // Set the theme before first paint so a saved choice doesn't flash the wrong colors.
+  try {
+    const saved = JSON.parse(localStorage.getItem('modelpainter:settings'));
+    if (saved && (saved.theme === 'light' || saved.theme === 'dark')) document.documentElement.dataset.theme = saved.theme;
+  } catch { /* no saved theme */ }
+</script>
+<script type="module" src="./index.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <button id="go-home" class="brand" type="button" title="All projects">
+    <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M33 5c9-2 13 7 20 11 7 5 8 14 3 20-4 5-2 13-9 18-8 5-15 1-23 4-8 2-16-3-17-11-1-7-6-11-3-19 3-7 10-7 14-13 4-5 8-9 15-10Z"/></svg>
+    <span class="brand-name">Splotchle 3D</span>
+  </button>
+  <button id="project-name" class="project-name" type="button" title="Rename this project" hidden></button>
+  <span id="save-state" class="save-state" role="status" hidden></span>
+  <div class="topbar-middle" id="project-bar" hidden>
+    <div class="seg" role="group" aria-label="View">
+      <button class="seg-btn" type="button" data-view="3d" title="3D view (Tab)">3D</button>
+      <button class="seg-btn" type="button" data-view="uv" title="UV view (Tab)">UV</button>
+      <button class="seg-btn" type="button" data-view="split" title="Both side by side (Shift+Tab)">Split</button>
+    </div>
+    <label class="bar-select">
+      <span class="visually-hidden">Preview mode</span>
+      <select id="preview-select" title="Preview mode (V)"></select>
+    </label>
+    <button id="export-btn" class="bar-button" type="button">Save &amp; export</button>
+  </div>
+  <div class="topbar-end">
+    <button id="settings-btn" class="icon-button" type="button" aria-label="Settings and key bindings" title="Settings and key bindings"></button>
+    <button id="theme-toggle" class="icon-button" type="button" aria-label="Switch color theme" title="Switch color theme"></button>
+    <a class="back-link" href="../">williamschell.dev</a>
+  </div>
+</header>
+
+<main class="app">
+  <section id="home" class="home" aria-label="Projects"></section>
+
+  <section id="workspace" class="workspace" aria-label="Painter" hidden>
+    <div class="rail" role="toolbar" aria-label="Painting tools" id="rail"></div>
+    <div class="stage">
+      <div class="pass-tabs" role="tablist" aria-label="Active pass" id="pass-tabs"></div>
+      <div id="viewport" class="viewport">
+        <canvas id="gl" tabindex="0" aria-label="Model viewport"></canvas>
+        <div id="brush-circle" class="brush-circle" hidden></div>
+        <div id="split-line" class="split-line" hidden></div>
+      </div>
+      <div class="hint" id="hint"></div>
+    </div>
+    <button id="panel-toggle" class="panel-toggle button small" type="button" aria-expanded="false" aria-controls="panel">Panel</button>
+    <aside id="panel" class="panel" aria-label="Color and options"></aside>
+  </section>
+</main>
+
+<div id="busy" class="busy" hidden><div class="busy-card" role="status"><div class="spinner" aria-hidden="true"></div><p id="busy-text"></p></div></div>
+<div id="drop-veil" class="drop-veil" hidden><p>Drop it anywhere</p></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
