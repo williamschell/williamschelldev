@@ -24,6 +24,15 @@ export const CATALOG = [
     id: 'novle', name: 'Novle', url: '../novle/', kind: 'done', autoKey: 'novle:streak', blurb: 'A daily short story challenge',
   },
   {
+    id: 'krillion', name: 'Krillion', url: 'https://krillion.io/', kind: 'points', unit: 'points', blurb: 'Name the nichest answer you can think of',
+  },
+  {
+    id: 'enclose-horse', name: 'Enclose Horse', url: 'https://enclose.horse/', kind: 'points', unit: 'points', blurb: 'Wall in the horse with as much grass as you can',
+  },
+  {
+    id: 'farflung', name: 'Farflung', url: 'https://farflung.game/', kind: 'points', unit: 'points', blurb: 'Pin the rarest countries that fit each clue',
+  },
+  {
     id: 'wordle', name: 'Wordle', url: 'https://www.nytimes.com/games/wordle/index.html', kind: 'guesses', max: 6, canFail: true, blurb: 'Guess the five-letter word',
   },
   {
@@ -83,7 +92,7 @@ export const CATALOG = [
 ];
 
 /** What a new person's list starts with. */
-export const DEFAULT_GAMES = ['splotchle'];
+export const DEFAULT_GAMES = ['splotchle', 'krillion'];
 
 /** Offered as one-tap additions when someone's list is short. */
 export const SUGGESTED_GAMES = ['wordle', 'connections', 'strands', 'mini', 'worldle'];

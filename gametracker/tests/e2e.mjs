@@ -142,7 +142,8 @@ async function rejected(promise) {
   requestLog.length = 0;
   await open(page);
 
-  same('first run lists exactly Splotchle', await page.locator('.game-row').evaluateAll((els) => els.map((e) => e.dataset.game)), ['splotchle']);
+  same('first run lists Splotchle and Krillion', await page.locator('.game-row').evaluateAll((els) => els.map((e) => e.dataset.game)), ['splotchle', 'krillion']);
+  same('Krillion links to its site', await row(page, 'krillion').locator('a.play').getAttribute('href'), 'https://krillion.io/');
   const play = row(page, 'splotchle').locator('a.play');
   same('Splotchle links to the sibling folder', await play.getAttribute('href'), '../splotchle/');
   same('Play opens a new tab', await play.getAttribute('target'), '_blank');
@@ -184,7 +185,7 @@ async function rejected(promise) {
   check('time is saved', (await rowText(page, 'mini')).includes('1:05'));
   await row(page, 'splotchle').locator('button:has-text("Mark done")').click();
   check('done game marks done', (await rowText(page, 'splotchle')).includes('Done'));
-  same('progress counts it', await page.locator('.progress-text').innerText(), '4 of 4 done');
+  same('progress counts it', await page.locator('.progress-text').innerText(), '4 of 5 done');
 
   await row(page, 'wordle').locator('button:has-text("Change")').click();
   await row(page, 'wordle').locator('.choice:has-text("X")').click();
@@ -212,7 +213,7 @@ async function rejected(promise) {
   await page.reload();
   await page.waitForSelector('.game-row');
   check('results survive a reload', (await rowText(page, 'wordle')).includes('X/6'));
-  same('order survives a reload', await page.locator('.game-row').evaluateAll((els) => els.map((e) => e.dataset.game)), ['splotchle', 'wordle', 'connections', 'mini']);
+  same('order survives a reload', await page.locator('.game-row').evaluateAll((els) => els.map((e) => e.dataset.game)), ['splotchle', 'krillion', 'wordle', 'connections', 'mini']);
 
   await go(page, '#/streaks');
   const miniCard = page.locator('.streak-card', { hasText: 'The Mini' });
@@ -233,7 +234,7 @@ async function rejected(promise) {
   check('history comes back with the game', (await rowText(page, 'connections')).includes('1 mistake'));
   await go(page, '#/games');
   await page.click('[aria-label="Move Wordle down"]');
-  same('reordering works', await page.locator('.manage-list').first().locator('li').evaluateAll((els) => els.map((e) => e.dataset.game)), ['splotchle', 'mini', 'wordle', 'connections']);
+  same('reordering works', await page.locator('.manage-list').first().locator('li').evaluateAll((els) => els.map((e) => e.dataset.game)), ['splotchle', 'krillion', 'mini', 'wordle', 'connections']);
   check('top game can\'t move up', await page.locator('[aria-label="Move Splotchle up"]').isDisabled());
   await page.click('[aria-label="Remove Splotchle from your list"]');
   await go(page, '#/today');

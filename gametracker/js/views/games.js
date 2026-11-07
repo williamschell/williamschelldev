@@ -58,23 +58,25 @@ function myListSection(redraw) {
 
 function addSection(redraw) {
   const available = [...CATALOG, ...customGames()].filter((game) => !isOnList(game.id));
+  // Each game is a sticky note: the note adds it, and the small link on it opens the game.
   return el('section', { class: 'card' },
     el('h2', {}, 'Add a game'),
     available.length === 0
       ? el('p', { class: 'muted' }, 'You\'ve added all of them.')
-      : el('ul', { class: 'manage-list' }, ...available.map((game) => el('li', { 'data-game': game.id },
-        el('div', { class: 'manage-name' },
-          externalLink(game.url, {}, game.name),
-          game.blurb ? el('p', { class: 'muted small' }, game.blurb) : null),
+      : el('ul', { class: 'sticky-grid' }, ...available.map((game) => el('li', { class: 'sticky-note', 'data-game': game.id },
         el('button', {
           type: 'button',
-          class: 'button small',
+          class: 'sticky-add',
           'aria-label': `Add ${game.name}`,
           onclick: () => {
             addGame(game.id);
             redraw();
           },
-        }, icon('plus'), 'Add')))));
+        },
+        el('span', { class: 'sticky-name' }, game.name),
+        game.blurb ? el('span', { class: 'sticky-blurb' }, game.blurb) : null,
+        el('span', { class: 'sticky-plus' }, icon('plus'), 'Add')),
+        externalLink(game.url, { class: 'sticky-link', 'aria-label': `Visit ${game.name}` }, 'visit', icon('external'))))));
 }
 
 function customSection(redraw) {
@@ -111,7 +113,7 @@ function customSection(redraw) {
     el('label', { class: 'field' }, 'Link', url),
     el('label', { class: 'field' }, 'How it\'s scored', kind),
     maxField,
-    el('button', { type: 'submit', class: 'button primary' }, 'Add game')));
+    el('button', { type: 'submit', class: 'sticky-button' }, icon('plus'), 'Add game')));
 }
 
 function backupSection(redraw) {

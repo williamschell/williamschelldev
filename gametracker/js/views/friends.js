@@ -153,7 +153,7 @@ function addFriendCard(backend, redraw, pendingCode) {
           toast(friendlyError(err));
         }
       },
-    }, field, el('button', { type: 'submit', class: 'button primary small' }, 'Add')));
+    }, field, el('button', { type: 'submit', class: 'sticky-button' }, icon('plus'), 'Add')));
 }
 
 async function friendsList(backend, redraw) {

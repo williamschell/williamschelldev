@@ -233,13 +233,13 @@ function pasteBox(date, redraw) {
 
 function suggestions(redraw) {
   const offered = SUGGESTED_GAMES.filter((id) => !isOnList(id)).map(catalogGame);
-  if (myGames().length >= 4 || offered.length === 0) return null;
+  if (myGames().length >= 5 || offered.length === 0) return null;
   return el('section', { class: 'suggestions' },
     el('h2', {}, 'Add the games you play'),
     el('div', { class: 'row' },
       ...offered.map((game) => el('button', {
         type: 'button',
-        class: 'button small',
+        class: 'sticky-button',
         onclick: () => {
           addGame(game.id);
           redraw();
@@ -292,7 +292,7 @@ export function renderToday(host, ctx) {
         ? el('div', { class: 'game-list' }, ...games.map((game) => gameRow(game, date, redraw)))
         : el('div', { class: 'empty' },
           el('h2', {}, 'Your list is empty'),
-          el('p', {}, el('a', { class: 'button primary', href: '#/games' }, 'Choose some games'))),
+          el('p', {}, el('a', { class: 'sticky-button', href: '#/games' }, icon('plus'), 'Choose some games'))),
       suggestions(redraw),
     ].filter(Boolean));
 

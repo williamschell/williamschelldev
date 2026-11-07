@@ -159,9 +159,19 @@ test('scores: invalid results are rejected', () => {
   equal(cleanResult(splotchle, { score: 99 }), { score: null, failed: false });
 });
 
-test('catalog: Splotchle is on the list by default', () => {
-  equal(DEFAULT_GAMES.includes('splotchle'), true);
+test('catalog: Splotchle and Krillion are on the list by default', () => {
+  equal(DEFAULT_GAMES, ['splotchle', 'krillion']);
   equal(catalogGame('splotchle').url, '../splotchle/');
+  equal(catalogGame('krillion').kind, 'points');
+});
+
+test('catalog: points games rank higher first', () => {
+  for (const id of ['krillion', 'enclose-horse', 'farflung']) {
+    const game = catalogGame(id);
+    equal(game.kind, 'points');
+    const ranked = rankRows(game, [{ score: 120, failed: false }, { score: 480, failed: false }]);
+    equal(ranked.map((r) => r.score), [480, 120]);
+  }
 });
 
 test('catalog: every game is well formed', () => {

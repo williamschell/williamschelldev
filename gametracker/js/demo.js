@@ -148,7 +148,7 @@ export async function gameBoard({ game, date, scope }) {
 export async function friendsDay(date) {
   await wait();
   const friends = loadAccount()?.friends ?? [];
-  const gameIds = ['splotchle', 'novle', 'wordle', 'connections', 'strands', 'mini', 'worldle', 'quordle', 'framed', 'contexto'];
+  const gameIds = ['splotchle', 'krillion', 'enclose-horse', 'farflung', 'novle', 'wordle', 'connections', 'strands', 'mini', 'worldle', 'quordle', 'framed', 'contexto'];
   return gameIds.flatMap((id) => {
     const game = catalogGame(id);
     return fakeRows(game, date, friends.map((f) => f.display_name)).map((row) => ({ ...row, game_id: id }));

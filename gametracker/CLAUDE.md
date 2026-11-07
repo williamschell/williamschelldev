@@ -42,7 +42,7 @@ gametracker/
 │   ├── router.js       # Hash routes
 │   ├── ui.js           # Element builder, icons, toasts, dialogs
 │   └── views/          # today, compare, streaks, friends, games
-├── assets/             # favicon.svg, icons/sprite.svg
+├── assets/             # favicon.svg, icons/sprite.svg, fonts/ (Patrick Hand + OFL.txt)
 ├── vendor/supabase.js
 ├── supabase/           # schema.sql and setup README
 └── tests/
@@ -62,7 +62,9 @@ gametracker/
 - **Friends** (`#/friends`): choose to start comparing, set a name, share a friend code or link, add and remove friends, opt out of Everyone, delete your data. `#/add/CODE` opens this view with the code filled in.
 - **Games** (`#/games`): add and remove games, reorder them, add custom games, and back up or restore everything as a JSON file.
 
-**Splotchle is on everyone's list by default.** It can still be removed like any other game and added back.
+**Splotchle and Krillion are on everyone's list by default** (`DEFAULT_GAMES`). They can still be removed like any other game and added back. Defaults only apply to a list that has never been saved, so changing them doesn't touch existing players' lists.
+
+Krillion, Enclose Horse and Farflung are `points` games with no paste parser, because their share text hasn't been checked yet. Add parsers once someone pastes a real result.
 
 ## 4. Scores
 
@@ -140,7 +142,7 @@ It runs the app with the real `api.js` and the real supabase-js against the real
 - ES2022, `const`/`let`, named exports only, JSDoc on public functions, 2-space indent, semicolons, single quotes.
 - Build DOM with `el()`, which never parses HTML, so names from other players are safe.
 - CSS: custom properties in `:root`, light and dark through `prefers-color-scheme` plus a manual toggle, mobile first.
-- **Palette**: blue and white in light mode, maroon and black in dark mode, with nearly square corners, matching Splotchle.
+- **Look: a spiral notepad on a desk.** Ruled paper with a red margin, a cardboard top with the sections as tabs, handwriting (Patrick Hand, self-hosted in `assets/fonts/` under the OFL, latin subset only) and controls drawn in pen. Games on Today are a to-do list with tick boxes, and streak cards and dialogs are index cards. **Anything that adds to a list is a sticky note with a thumbtack** (`.sticky-note` for the Games board, `.sticky-button` for single buttons). Notes that aren't buttons are taped on, not pinned. Light mode is navy ink on cream paper; dark mode is the pad at night, with a maroon top and margin on near-black paper.
 - Every control works by keyboard with a visible focus ring, icon buttons have `aria-label`, color is never the only signal, and animation respects `prefers-reduced-motion`.
 
 ## 11. Out of scope (for now)
