@@ -7,8 +7,8 @@
 // don't reuse Splotchle's or Novle's values.
 
 const PRODUCTION = {
-  url: '',
-  anonKey: '',
+  url: 'https://frlsucgkuphttppesrmf.supabase.co',
+  anonKey: 'sb_publishable_pYSQndZqkLHYCoQ07Tmk3Q_WJNFkkqs',
 };
 
 // A separate project for development, so testing never touches production data.
