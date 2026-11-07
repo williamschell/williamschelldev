@@ -12,7 +12,7 @@ const BAKE_COUNT = SNAPSHOT_EVERY;
 
 // A hand resting on a tablet registers as touch. Ignore touch for this long after the pen was
 // last seen, which covers the moment before a stroke and the pauses between strokes.
-export const PALM_REJECT_MS = 1500;
+const PALM_REJECT_MS = 1500;
 
 /** How far a pixel's color can stray from the clicked pixel and still get filled. */
 const FILL_TOLERANCE = 40;
@@ -92,7 +92,7 @@ function drawSegment(ctx, stroke, start, control, end, widthStart, widthEnd) {
 }
 
 /** Applies one stroke's tool settings to a context. */
-export function applyStyle(ctx, stroke) {
+function applyStyle(ctx, stroke) {
   ctx.globalCompositeOperation = stroke.t === 'e' ? 'destination-out' : 'source-over';
   ctx.strokeStyle = stroke.t === 'e' ? '#000' : strokePaint(stroke);
   ctx.fillStyle = ctx.strokeStyle;
@@ -105,7 +105,7 @@ export function applyStyle(ctx, stroke) {
  * consecutive points, with the real point as the quadratic control. That keeps the
  * tangent continuous at every join, so fast strokes come out smooth instead of polygonal.
  */
-export function drawPoint(ctx, stroke, i) {
+function drawPoint(ctx, stroke, i) {
   const p = stroke.p;
   const x = p[i * 3];
   const y = p[i * 3 + 1];
@@ -141,7 +141,7 @@ export function drawPoint(ctx, stroke, i) {
 }
 
 /** Draws the last half segment, from the final midpoint to the final point. */
-export function drawEnd(ctx, stroke) {
+function drawEnd(ctx, stroke) {
   const n = stroke.p.length / 3;
   if (n < 2) return;
   const p = stroke.p;
