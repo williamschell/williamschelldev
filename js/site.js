@@ -87,6 +87,8 @@
   function block(b) {
     switch (b.type) {
       case "heading": return `<h2 class="block-heading">${esc(b.text)}</h2>`;
+      case "subheading": return `<h3 class="block-subheading">${esc(b.text)}</h3>`;
+      case "list": return `<ul class="block-list">${(b.items || []).map(t => `<li>${esc(t)}</li>`).join("")}</ul>`;
       case "text": return `<div class="block-text">${String(b.text || "").split(/\n\s*\n/).map(t => `<p>${esc(t).replace(/\n/g, "<br>")}</p>`).join("")}</div>`;
       case "image": return `<figure class="block-image">${img(b.src)}${b.caption ? `<figcaption>${esc(b.caption)}</figcaption>` : ""}</figure>`;
       case "gallery": return `<div class="block-gallery">${(b.images || []).map(s => img(s)).join("")}</div>`;
@@ -107,6 +109,7 @@
       p.teamSize && `Team Size: ${esc(p.teamSize)}`,
       p.roles && `Roles: ${esc(p.roles)}`,
       p.engine && `Engine: ${esc(p.engine)}`,
+      p.tech && `Built with: ${esc(p.tech)}`,
       p.dates && esc(p.dates)
     ].filter(Boolean).map(m => `<div>${m}</div>`).join("");
     const links = (p.links || []).map(l => `<a class="btn" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)}</a>`).join("");
