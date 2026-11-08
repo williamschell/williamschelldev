@@ -67,8 +67,33 @@ function globle(text) {
   return m ? { score: Number(m[1]), failed: false } : null;
 }
 
+/** "Krillion #115 🦐" with the points on the next line. */
+function krillion(text) {
+  const m = text.match(/\bKrillion\s*#?\s*\d+[^\n]*\r?\n\s*(\d[\d,]*)\s*(?:\r?\n|$)/i);
+  return m ? { score: Number(m[1].replace(/,/g, '')), failed: false } : null;
+}
+
+/** "Enclose Horse Day 313" then "🥇 Excellent! 🥇 98%", the share of the best possible. */
+function encloseHorse(text) {
+  const m = text.match(/enclose\.horse\b[\s\S]*?(\d{1,3})\s*%/i);
+  if (!m || Number(m[1]) > 100) return null;
+  return { score: Number(m[1]), failed: false };
+}
+
+/** "Farflung #34 · 155/500 km". Stored out of 500, in case the total ever changes. */
+function farflung(text) {
+  const m = text.match(/\bFarflung\s*#?\s*\d+[^\n\d]*?(\d+)\s*\/\s*(\d+)/i);
+  if (!m) return null;
+  const [score, total] = [Number(m[1]), Number(m[2])];
+  if (total === 0 || score > total) return null;
+  return { score: total === 500 ? score : Math.round((score * 500) / total), failed: false };
+}
+
 /** Tried in order. Each name below is specific enough that the order rarely matters. */
 const PARSERS = [
+  ['krillion', krillion],
+  ['enclose-horse', encloseHorse],
+  ['farflung', farflung],
   ['wordle', outOf(/\bWordle\s+[\d,.\s]*?\d\s+([1-6X])\/6/i)],
   ['worldle', outOf(/\bWorldle\s+#?\s*\d+[^\n]*?\b([1-6X])\/6/i)],
   ['connections', connections],

@@ -60,6 +60,7 @@ export function formatScore(game, { score, failed }) {
       return failed ? 'Failed' : formatTime(score ?? 0);
     case 'points':
       if (failed) return 'Failed';
+      if (game.unit === '%') return `${score}%`;
       return game.max ? `${score}/${game.max}${game.unit ? ` ${game.unit}` : ''}` : plural(score ?? 0, game.unit);
     default:
       return failed ? 'Failed' : 'Done';

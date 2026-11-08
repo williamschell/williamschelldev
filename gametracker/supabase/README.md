@@ -19,6 +19,8 @@ Never copy the `service_role` key anywhere in this repo. It bypasses all of the 
 
 **2026-11-07: username and password accounts.** Run everything from that banner to the end of the file. It **removes players made with the old no-signup system**, with their shared scores and friendships. Their history is still in their browsers, and it uploads again when they make an account.
 
+**2026-11-07: overall board.** Adds `day_board`, which the overall board on Compare reads. It's safe to run again. If you already ran the accounts migration, run just this one.
+
 ## Accounts
 
 Accounts are a username and a password, with no email. They live in this database rather than in Supabase Auth, because Supabase's password sign-in needs a real email address.

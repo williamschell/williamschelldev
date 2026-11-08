@@ -179,11 +179,31 @@ export async function gameBoard({ game, date, scope }) {
   return rankRows(game, rows);
 }
 
+const DEMO_GAMES = ['splotchle', 'krillion', 'enclose-horse', 'farflung', 'novle', 'wordle', 'connections', 'strands', 'mini', 'worldle', 'quordle', 'framed', 'contexto'];
+
+export async function dayBoard({ date, scope }) {
+  await wait();
+  const account = loadAccount();
+  const friends = (account?.friends ?? []).map((f) => f.display_name);
+  const names = scope === 'friends' ? friends : [...new Set([...friends, ...STRANGERS])];
+  const rows = DEMO_GAMES.flatMap((id) => fakeRows(catalogGame(id), date, names).map((row) => ({
+    ...row, game_id: id, is_me: false, is_friend: friends.includes(row.display_name),
+  })));
+  if (account) {
+    for (const mine of savedResults.values()) {
+      if (mine.date !== date || mine.gameId.startsWith('c-')) continue;
+      rows.push({
+        user_id: ME, display_name: account.name, game_id: mine.gameId, score: mine.score, failed: mine.failed, is_me: true, is_friend: false,
+      });
+    }
+  }
+  return rows;
+}
+
 export async function friendsDay(date) {
   await wait();
   const friends = loadAccount()?.friends ?? [];
-  const gameIds = ['splotchle', 'krillion', 'enclose-horse', 'farflung', 'novle', 'wordle', 'connections', 'strands', 'mini', 'worldle', 'quordle', 'framed', 'contexto'];
-  return gameIds.flatMap((id) => {
+  return DEMO_GAMES.flatMap((id) => {
     const game = catalogGame(id);
     return fakeRows(game, date, friends.map((f) => f.display_name)).map((row) => ({ ...row, game_id: id }));
   });

@@ -9,6 +9,7 @@ import {
   CATALOG, DEFAULT_GAMES, catalogGame, customGameId, isWebUrl, makeCustomGame,
 } from '../js/catalog.js';
 import { parseShare } from '../js/parse.js';
+import { gamePoints, overallBoard } from '../js/overall.js';
 import { parseHash } from '../js/router.js';
 
 const results = [];
@@ -263,6 +264,52 @@ test('parse: the rest', () => {
   parses('Queens #123 | 1:23 and flawless', 'queens', 83);
   parses('Tango #123 | 0:45', 'tango', 45);
   parses('🌎 Nov 7, 2026 🌍\n🔥 3 | Avg. Guesses: 6\n🟡🟠 = 12\n#globle', 'globle', 12);
+});
+
+test('parse: Krillion, Enclose Horse and Farflung, from real share text', () => {
+  parses('Krillion #115 🦐\n410\n\n🏮🦑🦑🐟🏮🦑🐟', 'krillion', 410);
+  parses('Krillion #116 🦐\r\n1,250\r\n🏮', 'krillion', 1250);
+  parses('https://enclose.horse Day 313\n🥇 Excellent! 🥇 98%', 'enclose-horse', 98);
+  parses('https://enclose.horse Day 314\nGood 100%', 'enclose-horse', 100);
+  parses('Farflung #34 · 155/500 km\nRare · Miss · Miss · Elusive · Miss\nhttps://farflung.game/s/c6wxs3?e=34', 'farflung', 155);
+  parses('Farflung #35 · 60/600 km', 'farflung', 50);
+  equal(formatScore(catalogGame('enclose-horse'), { score: 98, failed: false }), '98%');
+  equal(formatScore(catalogGame('farflung'), { score: 155, failed: false }), '155/500 km');
+  equal(formatScore(catalogGame('krillion'), { score: 410, failed: false }), '410 points');
+});
+
+test('overall: points per game', () => {
+  equal(gamePoints(wordle, { score: 1, failed: false }), 100);
+  equal(gamePoints(wordle, { score: 6, failed: false }), 50);
+  equal(gamePoints(wordle, { score: 3, failed: false }), 80);
+  equal(gamePoints(wordle, { score: null, failed: true }), 0);
+  equal(gamePoints(splotchle, { score: null, failed: false }), 100);
+  equal(gamePoints(catalogGame('enclose-horse'), { score: 98, failed: false }), 99);
+  equal(gamePoints(catalogGame('farflung'), { score: 155, failed: false }), 66);
+  // Against the best on the board.
+  equal(gamePoints(catalogGame('krillion'), { score: 410, failed: false }, 410), 100);
+  equal(gamePoints(catalogGame('krillion'), { score: 205, failed: false }, 410), 75);
+  equal(gamePoints(mini, { score: 59, failed: false }, 29), 75);
+  equal(gamePoints(connections, { score: 0, failed: false }, 0), 100);
+  equal(gamePoints(connections, { score: 1, failed: false }, 0), 75);
+  equal(gamePoints(mini, { score: 30, failed: false }, null), 100);
+});
+
+test('overall: more games finished beats one lucky one, ties share a rank', () => {
+  const row = (user, gameId, score, failed = false) => ({
+    user_id: user, display_name: user, game_id: gameId, score, failed,
+  });
+  const board = overallBoard([
+    row('lucky', 'wordle', 1),
+    row('steady', 'wordle', 5), row('steady', 'splotchle', null), row('steady', 'krillion', 300),
+    row('twin', 'wordle', 1),
+    row('flop', 'wordle', null, true), row('flop', 'c-my-game', 1),
+    row('ghost', 'not-a-game', 1),
+  ], catalogGame);
+  equal(board.map((p) => [p.display_name, p.rank, p.points, p.solved]), [
+    ['steady', 1, 260, 3], ['lucky', 2, 100, 1], ['twin', 2, 100, 1], ['flop', 4, 0, 0],
+  ]);
+  equal(board[0].games.map((g) => g.gameId), ['splotchle', 'krillion', 'wordle']);
 });
 
 test('parse: anything else is left alone', () => {

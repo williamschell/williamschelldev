@@ -33,6 +33,7 @@ gametracker/
 │   ├── scores.js       # Formatting, comparing, ranking and validating scores (pure)
 │   ├── catalog.js      # The built-in games and the rules for custom games (pure)
 │   ├── parse.js        # Reads pasted share text into a result (pure)
+│   ├── overall.js      # Points for the overall board, across every game (pure)
 │   ├── external.js     # Reads Splotchle's and Novle's streaks from this origin (§5)
 │   ├── store.js        # The game list and results, in IndexedDB and localStorage, plus sync
 │   ├── backend.js      # Picks the real backend or the demo one
@@ -52,12 +53,12 @@ gametracker/
     └── e2e.mjs         # Drives the real app and the real SQL in Chrome (§9)
 ```
 
-`dates`, `streaks`, `scores`, `catalog` and `parse` must stay **pure**: no DOM, no storage and no network.
+`dates`, `streaks`, `scores`, `catalog`, `parse` and `overall` must stay **pure**: no DOM, no storage and no network.
 
 ## 3. Features
 
 - **Today** (`#/today`): every game on your list with a Play link, your result, your streak and how you stand against friends. A box takes pasted share text and works out the game and score by itself. You can step back through earlier days to log something you missed.
-- **Compare** (`#/compare`): a ranked board for one game on one day, for Friends or Everyone.
+- **Compare** (`#/compare`): a ranked board for one game on one day, for Friends or Everyone. The first choice, **Overall** (`#/compare/overall`), ranks the whole day across every game (§4).
 - **Streaks** (`#/streaks`): your overall streak, plus current, best, total and a 12-week calendar for each game.
 - **Friends** (`#/friends`): share a friend code or link, add and remove friends. `#/add/CODE` opens this view with the code filled in. Signed out, it sends you to Account via `#/account/add/CODE`, which comes back here afterwards.
 - **Games** (`#/games`): add and remove games, reorder them, add custom games, and back up or restore everything as a JSON file.
@@ -65,7 +66,7 @@ gametracker/
 
 **Splotchle and Krillion are on everyone's list by default** (`DEFAULT_GAMES`). They can still be removed like any other game and added back. Defaults only apply to a list that has never been saved, so changing them doesn't touch existing players' lists.
 
-Krillion, Enclose Horse and Farflung are `points` games with no paste parser, because their share text hasn't been checked yet. Add parsers once someone pastes a real result.
+Krillion, Enclose Horse and Farflung have parsers written from real share text. Enclose Horse is stored as the percentage its share text gives (`max: 100`, `unit: '%'`), because its best possible score changes every day. Farflung is out of 500.
 
 ## 4. Scores
 
@@ -80,6 +81,14 @@ Every game has a `kind`, and a result is `{ score, failed }`:
 | `done` | none | `Done` | `score` is null, everyone ties |
 
 Failed results rank below every finished one. Ties share a rank (1, 2, 2, 4). The same rule exists twice, in `rankRows` in `scores.js` and in `game_board` in `schema.sql`, and the e2e test checks they agree.
+
+**The overall board** (`overall.js`, pure) turns each built-in game a player finished that day into 50 to 100 points, and their day is the sum, so finishing more games counts and one lucky game can't win the day. Finishing earns 50, and how well you did adds up to 50 more:
+
+- On the game's own scale where it has one: guesses with a `max` (1/6 is the top, 6/6 the bottom) and points with a `max` (98% earns 99).
+- Otherwise against the best finished score on the board being viewed: `score / best` for points, `(best + 1) / (score + 1)` for times and counts, so a best of 0 still works.
+- `done` games earn the full 100, failed games earn 0, and custom games don't count, because two players can set the same one up differently.
+
+The server only hands over the day's rows (`day_board`). The scoring is client-side because it needs the catalog. Giving a game a `max` moves it from "against the board" to its own scale.
 
 To add a game, add it to `CATALOG` in `catalog.js`, and add a parser in `parse.js` if it has share text. Add a real sample to `tests/tests.js` too. **The parsers were written from known formats, so check each one against real share text when you can**, and treat a mismatch as a bug. Manual entry always works.
 

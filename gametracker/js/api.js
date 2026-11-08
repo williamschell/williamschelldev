@@ -281,6 +281,15 @@ export function gameBoard({ game, date, scope, lower }) {
 }
 
 /**
+ * Every built-in game's results for one day, for the overall board (js/overall.js ranks them).
+ * @param {{ date: string, scope: 'friends'|'everyone' }} options
+ * @returns {Promise<import('./overall.js').DayRow[]>}
+ */
+export function dayBoard({ date, scope }) {
+  return rpc('day_board', { p_date: date, p_scope: scope });
+}
+
+/**
  * @param {string} date
  * @returns {Promise<{ game_id: string, user_id: string, display_name: string, score: number|null, failed: boolean }[]>}
  */

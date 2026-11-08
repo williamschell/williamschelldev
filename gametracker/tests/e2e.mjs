@@ -566,6 +566,36 @@ const serverResults = (accountId, game = 'wordle') => admin(`
   const points = await as(eve, `select * from public.game_board('spelling-bee', '${TODAY}', 'everyone', false)`);
   same('higher wins on points boards', points.map((r) => r.display_name), ['hiscore', 'eve']);
 
+  // The overall board: the server hands over the day, the client scores it.
+  await seedResult(eveAccount.id, 'c-house-game', TODAY, 1);
+  const day = await as(eve, `select * from public.day_board('${TODAY}', 'everyone')`);
+  check('the overall board leaves out custom games', !day.some((r) => r.game_id.startsWith('c-')));
+  same('the overall board marks you', [...new Set(day.filter((r) => r.is_me).map((r) => r.display_name))], ['eve']);
+  same('the overall board on friends is only you without friends', [...new Set((await as(eve, `select display_name from public.day_board('${TODAY}', 'friends')`)).map((r) => r.display_name))], ['eve']);
+  check('the overall board can be read without signing in', (await as(null, `select display_name from public.day_board('${TODAY}', 'everyone')`)).length === day.length);
+  check('history sent late stays off the overall board', !(await as(eve, `select display_name from public.day_board('${TEN_DAYS_AGO}', 'everyone')`)).some((r) => r.display_name === 'ada'));
+  const overallRanks = await a.page.evaluate(async (rows) => {
+    const { overallBoard } = await import('./js/overall.js');
+    const { catalogGame } = await import('./js/catalog.js');
+    return overallBoard(rows, catalogGame).map((r) => [r.display_name, r.rank, r.points]);
+  }, day);
+  same('overall points add up across games', overallRanks, [['eve', 1, 143], ['hiscore', 2, 100], ['ben', 3, 80], ['ada', 4, 70], ['dan', 5, 0]]);
+
+  await go(b.page, '#/compare/overall');
+  await b.page.waitForSelector('.overall-table');
+  const overallRows = await b.page.locator('.overall-table > tbody > tr').allInnerTexts();
+  check('the overall board ranks friends in the app', overallRows.length === 2 && overallRows[0].includes('ben') && overallRows[0].includes('80') && overallRows[1].includes('ada'), overallRows.join('|'));
+  await b.page.locator('tr.me summary').click();
+  check('a player opens to show each game', (await b.page.locator('tr.me .breakdown').innerText()).includes('+80'));
+  await b.page.locator('.overall-explain summary').click();
+  await shot(b.page, '08b-overall');
+  await go(b.page, '#/compare');
+  await b.page.waitForSelector('.overall-table');
+  check('Compare remembers the overall board', true);
+  await b.page.selectOption('select[aria-label="Game"]', 'wordle');
+  await b.page.waitForSelector('.board-table:not(.overall-table)');
+  check('and goes back to a single game', (await b.page.locator('.overall-explain').isHidden()));
+
   // Changing and clearing a result reaches the server.
   const [{ id: bId }] = await admin(`select id from public.accounts where username = 'ben'`);
   const bToday = async () => (await serverResults(bId)).find((r) => sqlDate(r.play_date) === TODAY);

@@ -1144,3 +1144,43 @@ grant execute on function public.my_account() to authenticated;
 grant execute on function public.my_results(timestamptz) to authenticated;
 grant execute on function public.save_list(jsonb, jsonb) to authenticated;
 grant execute on function public.my_list() to authenticated;
+
+
+-- ===========================================================================
+-- 2026-11-07: overall board
+-- ===========================================================================
+--
+-- Every built-in game's results for one day, for the overall board. The client turns them into
+-- points (js/overall.js), since that needs the game list, which lives in the client. Custom
+-- games (ids starting c-) are left out. RLS still decides whose results are visible.
+
+create or replace function public.day_board(p_date date, p_scope text)
+returns table (
+  user_id uuid, display_name text, game_id text, score int, failed boolean,
+  is_me boolean, is_friend boolean
+)
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  select r.user_id, p.display_name, r.game_id, r.score, r.failed,
+    r.user_id is not distinct from public.me(),
+    public.is_friend(r.user_id)
+  from public.results r
+  join public.profiles p on p.user_id = r.user_id
+  where r.play_date = p_date
+    and not r.deleted
+    and not r.backfilled
+    and r.game_id not like 'c-%'
+    and (
+      p_scope = 'everyone'
+      or r.user_id = public.me()
+      or public.is_friend(r.user_id)
+    )
+  limit 20000;
+$$;
+
+revoke execute on function public.day_board(date, text) from public, anon, authenticated;
+-- Like game_board, Everyone can be read without an account.
+grant execute on function public.day_board(date, text) to anon, authenticated;
