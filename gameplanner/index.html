@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Game Planner</title>
+<meta name="description" content="Plan a game: write the design doc, keep art, programming, design and audio to-dos on a kanban board, and export your lists.">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#d8ccb6">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#070708">
+<meta property="og:title" content="Game Planner">
+<meta property="og:description" content="A design doc and a to-do board for your game, in one notepad.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://williamschell.dev/gameplanner/">
+<link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="./assets/fonts/patrick-hand-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="./css/styles.css">
+<script>
+  // Set the theme before first paint so a saved choice doesn't flash the wrong colors.
+  try {
+    const theme = JSON.parse(localStorage.getItem('gameplanner:theme'));
+    if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+  } catch { /* no saved theme */ }
+</script>
+<script type="module" src="./index.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#/gdd" aria-label="Game Planner, go to the design doc">
+    <svg class="icon" aria-hidden="true"><use href="./assets/icons/sprite.svg#pad"/></svg>
+    <span class="brand-name">Game Planner</span>
+  </a>
+  <nav class="tabs" aria-label="Main">
+    <a class="tab" data-route="gdd" href="#/gdd">GDD</a>
+    <a class="tab" data-route="todos" href="#/todos">To-dos</a>
+    <a class="tab" data-route="export" href="#/export">Export</a>
+    <a class="tab" data-route="games" href="#/games">Games</a>
+  </nav>
+  <div class="topbar-end">
+    <a id="project-link" class="project-link" href="#/games">
+      <span id="project-label">My game</span>
+      <svg class="icon" aria-hidden="true"><use href="./assets/icons/sprite.svg#down"/></svg>
+    </a>
+    <button id="theme-toggle" class="icon-button" type="button" aria-label="Switch color theme"></button>
+    <a class="back-link" href="../">williamschell.dev</a>
+  </div>
+</header>
+
+<main id="view" class="view-host"></main>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="print-area" class="print-area"></div>
+</body>
+</html>
